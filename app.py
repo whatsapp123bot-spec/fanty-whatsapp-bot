@@ -67,11 +67,58 @@ def webhook():
                             print(f"ℹ️ Tipo de mensaje no manejado: {msg_type}")
                         print(f"📱 DE: {from_wa} | TIPO: {msg_type} | TEXTO: {text}")
                         if from_wa:
-                            reply_text = (
-                                f"👋 Hola, soy Fanty. Recibí tu mensaje: {text}" if text else
-                                "👋 Hola, soy Fanty. Recibí tu mensaje."
-                            )
-                            send_whatsapp_text(from_wa, reply_text)
+                            # Lógica: si saluda, enviar botones de bienvenida; si pulsa botones, manejar IDs; si no, eco.
+                            if msg_type == 'text':
+                                low = (text or '').strip().lower()
+                                greetings = ("hola", "holi", "buenas", "buenos días", "buenas tardes", "buenas noches")
+                                if any(g in low for g in greetings):
+                                    send_whatsapp_buttons_welcome(from_wa)
+                                else:
+                                    reply_text = (
+                                        f"👋 Hola, soy Fanty. Recibí tu mensaje: {text}" if text else
+                                        "👋 Hola, soy Fanty. Recibí tu mensaje."
+                                    )
+                                    send_whatsapp_text(from_wa, reply_text)
+                            elif msg_type == 'interactive':
+                                interactive = message.get('interactive', {})
+                                itype = interactive.get('type')
+                                reply_id = None
+                                if itype == 'button_reply':
+                                    reply_id = interactive.get('button_reply', {}).get('id')
+                                elif itype == 'list_reply':
+                                    reply_id = interactive.get('list_reply', {}).get('id')
+                                print("🔘 INTERACTIVE ID:", reply_id)
+                                if reply_id == 'VER_CATALOGO':
+                                    send_whatsapp_buttons_categories(from_wa)
+                                elif reply_id == 'HABLAR_ASESOR':
+                                    send_whatsapp_text(from_wa, '💬 Un asesor te contactará en breve. Si prefieres, responde con tu consulta ahora mismo.')
+                                elif reply_id == 'MAS_OPCIONES':
+                                    send_whatsapp_text(from_wa, 'ℹ️ Pronto agregaremos más opciones. Mientras tanto, puedes escribir lo que necesitas.')
+                                elif reply_id in ('CATALOGO_DISFRAZ', 'CATALOGO_LENCERIA', 'CATALOGO_MALLAS'):
+                                    # Enviar enlace al PDF si existe
+                                    fname = {
+                                        'CATALOGO_DISFRAZ': 'disfraz.pdf',
+                                        'CATALOGO_LENCERIA': 'lenceria.pdf',
+                                        'CATALOGO_MALLAS': 'mallas.pdf',
+                                    }.get(reply_id)
+                                    fpath = os.path.join(CATALOG_DIR, fname)
+                                    if os.path.exists(fpath):
+                                        # Construir URL absoluta al estático
+                                        base = request.url_root.rstrip('/')
+                                        rel = url_for('static', filename=f'catalogos/{fname}')
+                                        link = base + rel
+                                        label = 'Catálogo'
+                                        if reply_id == 'CATALOGO_DISFRAZ':
+                                            label = '🔥 Catálogo Disfraz Sexy'
+                                        elif reply_id == 'CATALOGO_LENCERIA':
+                                            label = '👙 Catálogo Lencería'
+                                        elif reply_id == 'CATALOGO_MALLAS':
+                                            label = '🧦 Catálogo Mallas'
+                                        send_whatsapp_text(from_wa, f"{label}: {link}")
+                                    else:
+                                        send_whatsapp_text(from_wa, '⚠️ Aún no hay catálogo cargado para esa categoría.')
+                                else:
+                                    send_whatsapp_text(from_wa, f"Recibí tu selección: {text}")
                     else:
                         statuses = value.get('statuses')
                         if statuses:
@@ -135,6 +182,72 @@ def send_whatsapp_text(to: str, body: str):
             'status': 0,
             'body': str(e)
         }
+
+
+def _post_wa(payload: dict):
+    """Helper para enviar payloads arbitrarios a la API de WhatsApp con logs."""
+    if not WHATSAPP_TOKEN or not PHONE_NUMBER_ID:
+        print('WHATSAPP_TOKEN o PHONE_NUMBER_ID no configurados; omitiendo envío.')
+        return {'status': 0, 'body': 'missing creds'}
+    url = f"https://graph.facebook.com/v19.0/{PHONE_NUMBER_ID}/messages"
+    headers = {
+        "Authorization": f"Bearer {WHATSAPP_TOKEN}",
+        "Content-Type": "application/json",
+    }
+    try:
+        print("➡️ Enviando WA (generic):", payload)
+        resp = requests.post(url, headers=headers, json=payload, timeout=10)
+        print("⬅️ Respuesta WA (generic):", resp.status_code, resp.text)
+        return {'status': resp.status_code, 'body': resp.text}
+    except Exception as e:
+        print('Excepción enviando WA (generic):', e)
+        return {'status': 0, 'body': str(e)}
+
+
+def send_whatsapp_buttons_welcome(to: str):
+    """Envía botones de bienvenida (reply buttons)."""
+    body_text = (
+        "👋 Hola, soy Fanty, tu asistente virtual 🤖\n"
+        "¿Qué deseas hacer hoy?"
+    )
+    payload = {
+        "messaging_product": "whatsapp",
+        "to": to,
+        "type": "interactive",
+        "interactive": {
+            "type": "button",
+            "body": {"text": body_text},
+            "action": {
+                "buttons": [
+                    {"type": "reply", "reply": {"id": "VER_CATALOGO", "title": "📦 Ver catálogo"}},
+                    {"type": "reply", "reply": {"id": "HABLAR_ASESOR", "title": "ℹ️ Hablar con asesor"}},
+                    {"type": "reply", "reply": {"id": "MAS_OPCIONES", "title": "💬 Más opciones"}},
+                ]
+            }
+        }
+    }
+    return _post_wa(payload)
+
+
+def send_whatsapp_buttons_categories(to: str):
+    """Envía botones de categorías de catálogo."""
+    payload = {
+        "messaging_product": "whatsapp",
+        "to": to,
+        "type": "interactive",
+        "interactive": {
+            "type": "button",
+            "body": {"text": "Elige una categoría de catálogo:"},
+            "action": {
+                "buttons": [
+                    {"type": "reply", "reply": {"id": "CATALOGO_DISFRAZ", "title": "🔥 Disfraz Sexy"}},
+                    {"type": "reply", "reply": {"id": "CATALOGO_LENCERIA", "title": "👙 Lencería"}},
+                    {"type": "reply", "reply": {"id": "CATALOGO_MALLAS", "title": "🧦 Mallas"}},
+                ]
+            }
+        }
+    }
+    return _post_wa(payload)
 
 
 @app.route('/send_message', methods=['POST'])
