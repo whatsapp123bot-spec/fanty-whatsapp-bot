@@ -10,3 +10,5 @@ __pycache__/
 # Entornos/variables
 .env
 .env.*
+!.env.example
+!*/.env.example
