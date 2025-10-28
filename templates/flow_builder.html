@@ -24,6 +24,9 @@
     .sidebar .node-item input { width: 120px; padding:4px 6px; }
     .sidebar .node-item button { padding:4px 8px; border-radius:6px; border:0; cursor:pointer; }
     .canvas { position:relative; background:#f0f2f7; border-radius:12px; overflow:auto; box-shadow: 0 6px 16px rgba(0,0,0,.06); }
+    /* Contenedor de zoom */
+    .stage { position:relative; width: 1200px; height: 800px; }
+    .stage-inner { position:relative; transform-origin: 0 0; }
   .nodes { position:relative; padding:20px; min-width: 1200px; min-height: 800px; }
   .node { position:absolute; width: 300px; background:var(--card); border-radius:12px; padding:10px; box-shadow: 0 6px 16px rgba(0,0,0,.08); border:1px solid #e8e8f0; }
   .node .head { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:6px; }
@@ -46,6 +49,17 @@
   .preview { stroke:#7444a8; stroke-width:2; fill:none; stroke-dasharray:4 4; }
   .start-connector { position:absolute; bottom:10px; right:10px; width:14px; height:14px; border-radius:50%; border:2px solid #7444a8; background:#fff; }
   .start-connector:hover { background:#e7dbff; }
+  /* Assets UI */
+  .assets { background:#fafbff; border:1px dashed #cfd4ff; padding:8px; border-radius:10px; margin-top:8px; }
+  .assets .actions { display:flex; gap:8px; margin-bottom:6px; }
+  .assets .actions button { background:#7444a8; color:#fff; border:0; border-radius:8px; padding:6px 8px; cursor:pointer; }
+  .assets .list { display:flex; flex-direction:column; gap:6px; }
+  .asset-item { display:flex; align-items:center; gap:8px; background:#fff; border:1px solid #eee; border-radius:8px; padding:6px; }
+  .asset-item img { max-height:38px; border-radius:6px; }
+  .asset-item .name { flex:1; font-size:13px; color:#333; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .asset-item button { background:var(--red); color:#fff; border:0; border-radius:8px; padding:4px 8px; cursor:pointer; }
+  /* Zoom HUD */
+  .zoom-hud { position:absolute; right:10px; bottom:10px; background:rgba(0,0,0,.6); color:#fff; padding:6px 8px; border-radius:8px; font-size:12px; z-index:3; }
     /* Overlay para elegir tipo de nodo */
     .overlay { position:fixed; inset:0; background:rgba(0,0,0,.35); display:none; align-items:center; justify-content:center; z-index:9999; }
     .overlay .panel { background:#fff; border-radius:12px; padding:16px; width:340px; box-shadow:0 8px 28px rgba(0,0,0,.25); }
@@ -85,8 +99,13 @@
     </aside>
 
     <section class="canvas">
-      <svg class="lines"></svg>
-      <div class="nodes" id="nodes"></div>
+      <div class="stage" id="stage">
+        <div class="stage-inner" id="stageInner">
+          <svg class="lines"></svg>
+          <div class="nodes" id="nodes"></div>
+        </div>
+      </div>
+      <div class="zoom-hud" id="zoomHud">100% (Ctrl + rueda)</div>
     </section>
   </div>
 
@@ -114,10 +133,14 @@
   const nodesEl = document.getElementById('nodes');
     const linesSvg = document.querySelector('svg.lines');
     const canvasEl = document.querySelector('.canvas');
+    const stageEl = document.getElementById('stage');
+    const stageInner = document.getElementById('stageInner');
+    const zoomHud = document.getElementById('zoomHud');
     const startNodeSel = document.getElementById('startNode');
     const nodeListEl = document.getElementById('nodeList');
   let dragging = null; // { id, el, dx, dy }
   const overlay = document.getElementById('overlay');
+  let ZOOM = 1.0; const MIN_ZOOM=0.5, MAX_ZOOM=2.0;
 
     function uid(base){
       let n = 1; let id = base || 'node';
@@ -150,7 +173,7 @@
 
       // Canvas nodes
       nodesEl.innerHTML = '';
-      let i=0;
+  let i=0;
       const cols = 3; const gapX=360, gapY=220; // simple auto-grid
       Object.entries(flow.nodes).forEach(([id, node]) => {
         // Si el nodo no tiene posición, asignar una por grilla y guardarla
@@ -163,12 +186,13 @@
         i++;
       });
 
+      updateStageSize();
       drawEdges();
       window.setTimeout(drawEdges, 50);
     }
 
     function renderNodeListItem(id){
-      const wrap = document.createElement('div');
+  const wrap = document.createElement('div');
       wrap.className = 'node-item';
       const inp = document.createElement('input');
       inp.value = id; inp.title = 'ID del nodo';
@@ -181,7 +205,7 @@
     }
 
     function renderNodeCard(id, node, x, y){
-      const el = document.createElement('div');
+  const el = document.createElement('div');
       el.className = 'node'; el.style.left = x+'px'; el.style.top = y+'px';
       el.dataset.nodeId = id;
       el.innerHTML = '';
@@ -227,6 +251,30 @@
       }
 
       if ((node.type||'action') !== 'advisor' && (node.type||'action') !== 'start') {
+        // Zona de assets (imagenes/documentos)
+        const assets = document.createElement('div'); assets.className='assets';
+        const actions = document.createElement('div'); actions.className='actions';
+        const addFile = document.createElement('button'); addFile.textContent='Agregar archivo';
+        addFile.onclick = (ev) => { ev.preventDefault(); handleUpload(id, 'application/pdf', 'file'); };
+        const addImg = document.createElement('button'); addImg.textContent='Agregar foto';
+        addImg.onclick = (ev) => { ev.preventDefault(); handleUpload(id, 'image/*', 'image'); };
+        actions.appendChild(addFile); actions.appendChild(addImg); assets.appendChild(actions);
+        const list = document.createElement('div'); list.className='list';
+        (node.assets||[]).forEach((a, ai) => {
+          const item = document.createElement('div'); item.className='asset-item';
+          if (a.type==='image') {
+            const img = document.createElement('img'); img.src = a.url; img.alt=a.name||'imagen'; item.appendChild(img);
+          } else {
+            const ic = document.createElement('span'); ic.textContent='📄'; item.appendChild(ic);
+          }
+          const name = document.createElement('a'); name.href=a.url; name.target='_blank'; name.className='name'; name.textContent=a.name||a.url; item.appendChild(name);
+          const rm = document.createElement('button'); rm.textContent='Quitar'; rm.onclick = (ev)=>{ ev.preventDefault(); removeAsset(id, ai); };
+          item.appendChild(rm);
+          list.appendChild(item);
+        });
+        const help = document.createElement('div'); help.className='legend'; help.textContent='Se envían antes del texto. Admite PDF, JPG, PNG.';
+        assets.appendChild(list); assets.appendChild(help);
+        el.appendChild(assets);
         const btns = document.createElement('div'); btns.className='btns';
         (node.buttons||[]).forEach((b, idx) => btns.appendChild(renderButtonRow(id, b, idx)));
         const add = document.createElement('button'); add.className='addRow'; add.textContent='+ Añadir botón';
@@ -278,6 +326,10 @@
       for (const k of Object.keys(flow.nodes)) {
         const btns = flow.nodes[k].buttons||[];
         btns.forEach(b => { if (b.next === id) delete b.next; });
+        // Quitar next desde nodos start
+        if ((flow.nodes[k].type||'action') === 'start' && flow.nodes[k].next === id) {
+          delete flow.nodes[k].next;
+        }
       }
       refresh();
     }
@@ -314,19 +366,19 @@
       // Limpia
       linesSvg.innerHTML = '<defs><marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#8a8aa8" /></marker></defs>';
       // Recalcular posiciones
-      const host = canvasEl.getBoundingClientRect();
+      const host = stageInner.getBoundingClientRect();
       const nodeCards = Array.from(document.querySelectorAll('.node'));
       const pos = {};
       nodeCards.forEach(card => {
         const id = card.dataset.nodeId;
         const r = card.getBoundingClientRect();
-        pos[id] = { x: r.left - host.left, y: r.top - host.top, w: r.width, h: r.height };
+        pos[id] = { x: (r.left - host.left)/ZOOM, y: (r.top - host.top)/ZOOM, w: r.width/ZOOM, h: r.height/ZOOM };
       });
       // Posiciones de conectores (por botón)
       const connPos = {};
       document.querySelectorAll('[data-connector]').forEach(el => {
         const r = el.getBoundingClientRect();
-        connPos[el.dataset.connector] = { x: r.left - host.left + r.width/2, y: r.top - host.top + r.height/2 };
+        connPos[el.dataset.connector] = { x: (r.left - host.left + r.width/2)/ZOOM, y: (r.top - host.top + r.height/2)/ZOOM };
       });
       // Posición de entrada por nodo (inlet)
       const inletPos = {};
@@ -334,14 +386,14 @@
         const inlet = card.querySelector('.inlet');
         if (inlet) {
           const r = inlet.getBoundingClientRect();
-          inletPos[card.dataset.nodeId] = { x: r.left - host.left + r.width/2, y: r.top - host.top + r.height/2 };
+          inletPos[card.dataset.nodeId] = { x: (r.left - host.left + r.width/2)/ZOOM, y: (r.top - host.top + r.height/2)/ZOOM };
         }
       });
       // Posición del conector de inicio por nodo
       const startConnPos = {};
       document.querySelectorAll('[data-start-connector]').forEach(el => {
         const r = el.getBoundingClientRect();
-        startConnPos[el.dataset.startConnector] = { x: r.left - host.left + r.width/2, y: r.top - host.top + r.height/2 };
+        startConnPos[el.dataset.startConnector] = { x: (r.left - host.left + r.width/2)/ZOOM, y: (r.top - host.top + r.height/2)/ZOOM };
       });
       // Pintar líneas next
       Object.entries(flow.nodes).forEach(([id, node]) => {
@@ -381,9 +433,9 @@
     function startConnect(e, nodeId, idx, connectorEl){
       e.preventDefault();
       const rect = connectorEl.getBoundingClientRect();
-      const host = canvasEl.getBoundingClientRect();
-      const x0 = rect.left - host.left + rect.width/2;
-      const y0 = rect.top - host.top + rect.height/2;
+      const host = stageInner.getBoundingClientRect();
+      const x0 = (rect.left - host.left + rect.width/2)/ZOOM;
+      const y0 = (rect.top - host.top + rect.height/2)/ZOOM;
       const p = document.createElementNS('http://www.w3.org/2000/svg','path');
       p.setAttribute('class','preview');
       linesSvg.appendChild(p);
@@ -393,8 +445,8 @@
     }
     function onConnectMove(e){
       if (!connecting) return;
-      const host = canvasEl.getBoundingClientRect();
-      const x1 = e.clientX - host.left; const y1 = e.clientY - host.top;
+      const host = stageInner.getBoundingClientRect();
+      const x1 = (e.clientX - host.left)/ZOOM; const y1 = (e.clientY - host.top)/ZOOM;
       const mx = (connecting.x0 + x1)/2;
       const d = `M ${connecting.x0} ${connecting.y0} C ${mx} ${connecting.y0}, ${mx} ${y1}, ${x1} ${y1}`;
       connecting.preview.setAttribute('d', d);
@@ -427,15 +479,15 @@
     function startDrag(e, el, id){
       e.preventDefault();
       const r = el.getBoundingClientRect();
-      dragging = { id, el, offsetX: e.clientX - r.left, offsetY: e.clientY - r.top };
+      dragging = { id, el, offsetX: (e.clientX - r.left)/ZOOM, offsetY: (e.clientY - r.top)/ZOOM };
       document.addEventListener('mousemove', onDragMove);
       document.addEventListener('mouseup', endDrag);
     }
     function onDragMove(e){
       if (!dragging) return;
-      const host = nodesEl.getBoundingClientRect();
-      let x = e.clientX - host.left - dragging.offsetX;
-      let y = e.clientY - host.top - dragging.offsetY;
+      const host = stageInner.getBoundingClientRect();
+      let x = (e.clientX - host.left)/ZOOM - dragging.offsetX;
+      let y = (e.clientY - host.top)/ZOOM - dragging.offsetY;
       // Limitar a valores no negativos
       x = Math.max(0, x); y = Math.max(0, y);
       dragging.el.style.left = x + 'px';
@@ -465,13 +517,14 @@
           if (b.next) out.next = b.next; else if (b.id) out.id = b.id.trim();
           return out;
         });
-        // Asegurar type/phone/keywords persisten
+        // Asegurar type/phone/keywords/assets persisten
         flow.nodes[k].type = flow.nodes[k].type || 'action';
         if (flow.nodes[k].type==='advisor') flow.nodes[k].phone = (flow.nodes[k].phone||'').trim();
         if (flow.nodes[k].type==='start') {
           flow.nodes[k].keywords = (flow.nodes[k].keywords||'').trim();
           if (flow.nodes[k].next) flow.nodes[k].next = String(flow.nodes[k].next);
         }
+        if (!Array.isArray(flow.nodes[k].assets)) delete flow.nodes[k].assets; // solo guardar si existe bien formada
       }
       const payload = JSON.stringify(flow, null, 2);
       document.getElementById('contentField').value = payload;
@@ -481,6 +534,74 @@
     function reloadFromServer(){
       window.location.reload();
     }
+
+    // Upload helpers
+    async function handleUpload(nodeId, accept, kind){
+      try {
+        const input = document.createElement('input'); input.type='file'; input.accept = accept;
+        const picked = await new Promise((resolve) => { input.onchange = () => resolve(input.files && input.files[0]); input.click(); });
+        if (!picked) return;
+        const fd = new FormData(); fd.append('file', picked);
+        const res = await fetch('/internal/upload?key={{ key }}', { method:'POST', body: fd });
+        if (!res.ok) { alert('Error al subir archivo'); return; }
+        const data = await res.json();
+        if (!flow.nodes[nodeId].assets) flow.nodes[nodeId].assets = [];
+        flow.nodes[nodeId].assets.push({ type: kind, url: data.url, name: data.name || picked.name });
+        refresh();
+      } catch (err) {
+        console.error(err); alert('No se pudo subir el archivo.');
+      }
+    }
+    function removeAsset(nodeId, idx){
+      const arr = flow.nodes[nodeId].assets||[]; arr.splice(idx,1); refresh();
+    }
+
+    // Zoom helpers
+    function setZoom(nextZoom, pivotClientX, pivotClientY){
+      const old = ZOOM; const nz = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, nextZoom));
+      if (Math.abs(nz - old) < 0.001) return;
+      // Mantener foco bajo el cursor
+      const rect = canvasEl.getBoundingClientRect();
+      const px = (pivotClientX ?? (rect.left + rect.width/2)) - rect.left + canvasEl.scrollLeft;
+      const py = (pivotClientY ?? (rect.top + rect.height/2)) - rect.top + canvasEl.scrollTop;
+      const worldX = px / old; const worldY = py / old;
+
+      ZOOM = nz;
+      updateStageSize();
+      drawEdges();
+
+      const newPx = worldX * ZOOM;
+      const newPy = worldY * ZOOM;
+      canvasEl.scrollLeft = newPx - ((pivotClientX ?? (rect.left + rect.width/2)) - rect.left);
+      canvasEl.scrollTop = newPy - ((pivotClientY ?? (rect.top + rect.height/2)) - rect.top);
+      zoomHud.textContent = Math.round(ZOOM*100) + '% (Ctrl + rueda)';
+    }
+    function updateStageSize(){
+      // calcular mundo según DOM real (más preciso con textareas/botones)
+      let maxX = 1200, maxY = 800;
+      const host = stageInner.getBoundingClientRect();
+      const cards = Array.from(document.querySelectorAll('.node'));
+      cards.forEach(card => {
+        const r = card.getBoundingClientRect();
+        const right = (r.right - host.left)/ZOOM;
+        const bottom = (r.bottom - host.top)/ZOOM;
+        maxX = Math.max(maxX, right + 200);
+        maxY = Math.max(maxY, bottom + 200);
+      });
+      stageEl.style.width = (maxX * ZOOM) + 'px';
+      stageEl.style.height = (maxY * ZOOM) + 'px';
+      stageInner.style.width = maxX + 'px';
+      stageInner.style.height = maxY + 'px';
+      stageInner.style.transform = `scale(${ZOOM})`;
+    }
+
+    canvasEl.addEventListener('wheel', (e) => {
+      if (e.ctrlKey) {
+        e.preventDefault();
+        const factor = e.deltaY > 0 ? 0.9 : 1.1;
+        setZoom(ZOOM * factor, e.clientX, e.clientY);
+      }
+    }, { passive:false });
 
     // Primer render
     renderAll();

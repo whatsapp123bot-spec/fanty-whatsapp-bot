@@ -10,8 +10,11 @@ app.secret_key = os.environ.get('SECRET_KEY', 'dev-secret')
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 CATALOG_DIR = os.path.join(BASE_DIR, 'static', 'catalogos')
 os.makedirs(CATALOG_DIR, exist_ok=True)
+UPLOAD_DIR = os.path.join(BASE_DIR, 'static', 'uploads')
+os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 ALLOWED_EXTENSIONS = {'.pdf'}
+ALLOWED_UPLOADS = {'.pdf', '.jpg', '.jpeg', '.png'}
 
 # Variables de entorno para WhatsApp Cloud API
 VERIFY_TOKEN = os.getenv("VERIFY_TOKEN", "fantasia123")
@@ -84,6 +87,19 @@ def send_flow_node(to: str, node_id: str):
     # start: si tiene next, redirigir directamente al siguiente nodo
     if ntype == 'start' and node.get('next'):
         return send_flow_node(to, node.get('next'))
+
+    # Si hay adjuntos (assets), enviarlos primero
+    for asset in (node.get('assets') or [])[:5]:
+        try:
+            atype = (asset.get('type') or '').lower()
+            url = asset.get('url') or ''
+            name = asset.get('name') or 'archivo.pdf'
+            if atype == 'image' and url:
+                send_whatsapp_image(to, url)
+            elif atype in ('file', 'document') and url:
+                send_whatsapp_document(to, url, name)
+        except Exception:
+            pass
 
     # action / (start sin next): texto + botones
     raw_buttons = (node.get('buttons') or [])[:3]
@@ -428,6 +444,21 @@ def send_whatsapp_document(to: str, link: str, filename: str, caption: str | Non
     }
     if caption:
         payload["document"]["caption"] = caption
+    return _post_wa(payload)
+
+
+def send_whatsapp_image(to: str, link: str, caption: str | None = None):
+    """Envía una imagen usando un link público."""
+    payload = {
+        "messaging_product": "whatsapp",
+        "to": to,
+        "type": "image",
+        "image": {
+            "link": link
+        }
+    }
+    if caption:
+        payload["image"]["caption"] = caption
     return _post_wa(payload)
 
 
@@ -815,6 +846,11 @@ def _allowed_pdf(filename: str) -> bool:
     return ext in ALLOWED_EXTENSIONS
 
 
+def _allowed_upload(filename: str) -> bool:
+    _, ext = os.path.splitext(filename.lower())
+    return ext in ALLOWED_UPLOADS
+
+
 @app.route('/admin', methods=['GET', 'POST'])
 def admin_upload():
     """Panel para subir catálogos PDF por categoría."""
@@ -881,6 +917,41 @@ def internal_health():
         except Exception as e:
             info["subscribed_apps_error"] = str(e)
     return jsonify(info)
+
+
+@app.route('/internal/upload', methods=['POST'])
+def internal_upload():
+    """Sube un archivo (pdf/jpg/png) y devuelve su URL pública. Protegido con ?key=VERIFY_TOKEN o form key.
+    Retorna: { url, name, ext }
+    """
+    key = request.args.get('key') or request.form.get('key')
+    if key != VERIFY_TOKEN:
+        return jsonify({"error": "forbidden"}), 403
+    if 'file' not in request.files:
+        return jsonify({"error": "missing file"}), 400
+    f = request.files['file']
+    if not f or f.filename == '':
+        return jsonify({"error": "empty filename"}), 400
+    _, ext = os.path.splitext(f.filename)
+    if not _allowed_upload(f.filename):
+        return jsonify({"error": "invalid type"}), 400
+    try:
+        base = secure_filename(os.path.basename(f.filename)) or 'file'
+        name = base
+        dest = os.path.join(UPLOAD_DIR, name)
+        # Evitar colisiones añadiendo sufijo
+        i = 1
+        while os.path.exists(dest):
+            name = f"{os.path.splitext(base)[0]}_{i}{ext}"
+            dest = os.path.join(UPLOAD_DIR, name)
+            i += 1
+        f.save(dest)
+        base = request.url_root.rstrip('/')
+        rel = url_for('static', filename=f'uploads/{name}')
+        url = base + rel
+        return jsonify({"url": url, "name": name, "ext": ext.lower()}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route('/flow', methods=['GET', 'POST'])
