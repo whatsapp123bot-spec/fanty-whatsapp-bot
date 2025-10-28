@@ -25,6 +25,7 @@
                         <button onclick="openFlow()" style="padding:10px 16px; border-radius:8px; border:0; background:#0b5ed7; color:white; font-weight:600; cursor:pointer;">🛠️ Abrir editor</button>
                         <button onclick="openFlowVisual()" style="padding:10px 16px; border-radius:8px; border:0; background:#198754; color:white; font-weight:600; cursor:pointer;">🔧 Editor visual</button>
                         <button onclick="openLiveChat()" style="padding:10px 16px; border-radius:8px; border:0; background:#128c7e; color:white; font-weight:600; cursor:pointer;">💬 Chat en vivo</button>
+                         <button onclick="openSettings()" style="padding:10px 16px; border-radius:8px; border:0; background:#6c757d; color:white; font-weight:600; cursor:pointer;">⚙️ Configuración</button>
                     </div>
                     <p style="font-size:12px; color:#777; margin-top:8px;">Rutas directas: <code>/flow?key=TU_CLAVE</code> y <code>/flow/builder?key=TU_CLAVE</code></p>
                 </div>
@@ -32,6 +33,13 @@
             <div class="status" style="margin-top:12px; font-size:14px; color:#555; text-align:center;">
                 <p>Tip: usa el Editor visual para construir tu flujo y “Chat en vivo” para responder a quien solicite un asesor.</p>
             </div>
+            <script>
+            function getKey(){ return (document.getElementById('flowKey')||{}).value || ''; }
+            function openSettings(){ const k = getKey(); if(!k){ alert('Ingresa tu VERIFY_TOKEN'); return;} window.location.href = '/settings?key='+encodeURIComponent(k); }
+            function openFlow(){ const k = getKey(); if(!k){ alert('Ingresa tu VERIFY_TOKEN'); return;} window.location.href = '/flow?key='+encodeURIComponent(k); }
+            function openFlowVisual(){ const k = getKey(); if(!k){ alert('Ingresa tu VERIFY_TOKEN'); return;} window.location.href = '/flow/builder?key='+encodeURIComponent(k); }
+            function openLiveChat(){ const k = getKey(); if(!k){ alert('Ingresa tu VERIFY_TOKEN'); return;} window.location.href = '/live-chat?key='+encodeURIComponent(k); }
+            </script>
         </main>
     <script>
         function openFlow() {

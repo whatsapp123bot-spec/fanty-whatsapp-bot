@@ -3,7 +3,7 @@ import requests
 import sqlite3
 import time
 import json
-from flask import Flask, request, render_template, jsonify, redirect, url_for, flash
+from flask import Flask, request, render_template, jsonify, redirect, url_for, flash, g
 from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
@@ -32,6 +32,117 @@ FLOW_ENABLED = os.getenv("FLOW_ENABLED", "0") == "1"  # Obsoleto en webhook: pre
 FLOW_JSON_PATH = os.path.join(BASE_DIR, 'flow.json')
 FLOW_CONFIG: dict = {}
 CONV_DB_PATH = os.path.join(BASE_DIR, 'conversations.db')
+
+# -------- Multi-cuenta WhatsApp (configurable desde panel) --------
+def init_accounts_db():
+    try:
+        conn = sqlite3.connect(CONV_DB_PATH)
+        cur = conn.cursor()
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS accounts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                label TEXT,
+                phone_number_id TEXT,
+                whatsapp_token TEXT,
+                verify_token TEXT,
+                is_default INTEGER DEFAULT 0
+            )
+            """
+        )
+        # Asegurar columna account_id en users
+        try:
+            cur.execute("ALTER TABLE users ADD COLUMN account_id INTEGER")
+        except Exception:
+            pass
+        conn.commit(); conn.close()
+    except Exception as e:
+        print('⚠️ Error preparando tabla accounts:', e)
+
+
+def ensure_default_account_from_env():
+    """Si no hay cuentas, crea una por defecto usando las variables de entorno actuales."""
+    try:
+        conn = sqlite3.connect(CONV_DB_PATH); cur = conn.cursor()
+        cur.execute("SELECT COUNT(1) FROM accounts")
+        cnt = cur.fetchone()[0]
+        if cnt == 0 and PHONE_NUMBER_ID and WHATSAPP_TOKEN:
+            cur.execute(
+                "INSERT INTO accounts(label, phone_number_id, whatsapp_token, verify_token, is_default) VALUES (?,?,?,?,1)",
+                ("Cuenta principal", PHONE_NUMBER_ID, WHATSAPP_TOKEN, VERIFY_TOKEN, 1)
+            )
+            conn.commit()
+        conn.close()
+    except Exception as e:
+        print('⚠️ No se pudo crear cuenta por defecto desde ENV:', e)
+
+
+def get_default_account():
+    try:
+        conn = sqlite3.connect(CONV_DB_PATH); cur = conn.cursor()
+        cur.execute("SELECT id,label,phone_number_id,whatsapp_token,verify_token,is_default FROM accounts WHERE is_default=1 ORDER BY id LIMIT 1")
+        row = cur.fetchone(); conn.close()
+        if not row: return None
+        return { 'id': row[0], 'label': row[1], 'phone_number_id': row[2], 'whatsapp_token': row[3], 'verify_token': row[4], 'is_default': row[5] }
+    except Exception:
+        return None
+
+
+def get_account_by_phone_number_id(pnid: str):
+    try:
+        conn = sqlite3.connect(CONV_DB_PATH); cur = conn.cursor()
+        cur.execute("SELECT id,label,phone_number_id,whatsapp_token,verify_token,is_default FROM accounts WHERE phone_number_id=?", (pnid,))
+        row = cur.fetchone(); conn.close()
+        if not row: return None
+        return { 'id': row[0], 'label': row[1], 'phone_number_id': row[2], 'whatsapp_token': row[3], 'verify_token': row[4], 'is_default': row[5] }
+    except Exception:
+        return None
+
+
+def get_account_by_verify_token(vtok: str):
+    try:
+        conn = sqlite3.connect(CONV_DB_PATH); cur = conn.cursor()
+        cur.execute("SELECT id,label,phone_number_id,whatsapp_token,verify_token,is_default FROM accounts WHERE verify_token=?", (vtok,))
+        row = cur.fetchone(); conn.close()
+        if not row: return None
+        return { 'id': row[0], 'label': row[1], 'phone_number_id': row[2], 'whatsapp_token': row[3], 'verify_token': row[4], 'is_default': row[5] }
+    except Exception:
+        return None
+
+
+def list_accounts():
+    try:
+        conn = sqlite3.connect(CONV_DB_PATH); cur = conn.cursor()
+        cur.execute("SELECT id,label,phone_number_id,is_default FROM accounts ORDER BY id")
+        rows = cur.fetchall(); conn.close()
+        return [ { 'id': r[0], 'label': r[1], 'phone_number_id': r[2], 'is_default': r[3] } for r in rows ]
+    except Exception:
+        return []
+
+
+def upsert_account(label: str, phone_number_id: str, whatsapp_token: str, verify_token: str, is_default: bool=False, account_id: int=None):
+    try:
+        conn = sqlite3.connect(CONV_DB_PATH); cur = conn.cursor()
+        if is_default:
+            cur.execute("UPDATE accounts SET is_default=0")
+        if account_id:
+            cur.execute("UPDATE accounts SET label=?, phone_number_id=?, whatsapp_token=?, verify_token=?, is_default=? WHERE id=?",
+                        (label, phone_number_id, whatsapp_token, verify_token, 1 if is_default else 0, account_id))
+        else:
+            cur.execute("INSERT INTO accounts(label, phone_number_id, whatsapp_token, verify_token, is_default) VALUES (?,?,?,?,?)",
+                        (label, phone_number_id, whatsapp_token, verify_token, 1 if is_default else 0))
+        conn.commit(); conn.close(); return True
+    except Exception as e:
+        print('⚠️ upsert_account error:', e); return False
+
+
+def delete_account(account_id: int):
+    try:
+        conn = sqlite3.connect(CONV_DB_PATH); cur = conn.cursor()
+        cur.execute("DELETE FROM accounts WHERE id=?", (account_id,))
+        conn.commit(); conn.close(); return True
+    except Exception as e:
+        print('⚠️ delete_account error:', e); return False
 
 
 def init_conversations_db():
@@ -337,10 +448,12 @@ def send_flow_node(to: str, node_id: str):
 # Cargar flujo al iniciar
 load_flow_config()
 init_conversations_db()
+init_accounts_db()
+ensure_default_account_from_env()
 
 @app.route('/')
 def home():
-    # Pantalla principal: Vista previa o Agregar catálogos
+    # Pantalla principal
     return render_template('index.html')
 
 
@@ -392,7 +505,7 @@ def api_send_message():
         allowed = False
     if not allowed:
         return jsonify({'error': 'usuario no solicitó chat humano'}), 403
-    # Enviar y registrar
+    # Enviar y registrar (la cuenta se resuelve por usuario o g.account)
     send_whatsapp_text(wa_id, text)
     save_outgoing_message(wa_id, text, 'text')
     return jsonify({'ok': True})
@@ -422,7 +535,10 @@ def webhook():
     if request.method == 'GET':
         token = request.args.get('hub.verify_token')
         challenge = request.args.get('hub.challenge')
-        if token == VERIFY_TOKEN and challenge is not None:
+        # Aceptar verify_token del ENV o de cualquier cuenta registrada
+        if challenge is not None and (
+            token == VERIFY_TOKEN or (get_account_by_verify_token(token) is not None)
+        ):
             return challenge
         return 'Token incorrecto', 403
 
@@ -434,6 +550,10 @@ def webhook():
             for entry in data.get('entry', []):
                 for change in entry.get('changes', []):
                     value = change.get('value', {})
+                    # Determinar cuenta por phone_number_id del webhook
+                    pnid = ((value.get('metadata') or {}).get('phone_number_id')
+                            or value.get('phone_number_id'))
+                    g.account = get_account_by_phone_number_id(pnid) or get_default_account()
                     messages = value.get('messages')
                     if messages:
                         message = messages[0]
@@ -464,6 +584,14 @@ def webhook():
                                     if contacts:
                                         name = (contacts[0].get('profile') or {}).get('name')
                                     save_incoming_message(from_wa, text or '', 'text', name=name)
+                                    # Asociar usuario a la cuenta de este webhook
+                                    try:
+                                        if getattr(g, 'account', None):
+                                            conn2 = sqlite3.connect(CONV_DB_PATH); cur2 = conn2.cursor()
+                                            cur2.execute("UPDATE users SET account_id=? WHERE wa_id=?", (g.account.get('id'), from_wa))
+                                            conn2.commit(); conn2.close()
+                                    except Exception:
+                                        pass
                                 except Exception:
                                     pass
                                 # Control de chat humano (pausar flujo)
@@ -594,49 +722,45 @@ def internal_subscribe():
 
 
 def send_whatsapp_text(to: str, body: str):
-    """Envía un mensaje de texto usando WhatsApp Cloud API."""
-    if not WHATSAPP_TOKEN or not PHONE_NUMBER_ID:
-        print('WHATSAPP_TOKEN o PHONE_NUMBER_ID no configurados; omitiendo envío.')
-        return None
-    url = f"https://graph.facebook.com/v19.0/{PHONE_NUMBER_ID}/messages"
-    headers = {
-        "Authorization": f"Bearer {WHATSAPP_TOKEN}",
-        "Content-Type": "application/json",
-    }
+    """Envía un mensaje de texto usando WhatsApp Cloud API (multi-cuenta)."""
     payload = {
         "messaging_product": "whatsapp",
         "to": to,
         "type": "text",
         "text": {"body": body},
     }
-    try:
-        print("➡️ Enviando mensaje WA:", payload)
-        resp = requests.post(url, headers=headers, json=payload, timeout=10)
-        print("⬅️ Respuesta WA:", resp.status_code, resp.text)
-        if resp.status_code >= 400:
-            print('Error enviando mensaje WA:', resp.status_code, resp.text)
-        return {
-            'status': resp.status_code,
-            'body': resp.text
-        }
-    except Exception as e:
-        print('Excepción enviando mensaje WA:', e)
-        return {
-            'status': 0,
-            'body': str(e)
-        }
+    return _post_wa(payload)
 
 
 def _post_wa(payload: dict):
-    """Helper para enviar payloads arbitrarios a la API de WhatsApp con logs."""
-    if not WHATSAPP_TOKEN or not PHONE_NUMBER_ID:
+    """Helper para enviar payloads con la cuenta activa de la request, del usuario, o por defecto."""
+    # Resolver cuenta: (1) g.account; (2) por destinatario en users; (3) por defecto; (4) ENV
+    acc = None
+    try:
+        if hasattr(g, 'account') and g.account:
+            acc = g.account
+    except Exception:
+        acc = None
+    if not acc:
+        try:
+            to = payload.get('to')
+            if to:
+                conn = sqlite3.connect(CONV_DB_PATH); cur = conn.cursor()
+                cur.execute("SELECT a.id,a.label,a.phone_number_id,a.whatsapp_token,a.verify_token,a.is_default FROM users u JOIN accounts a ON a.id=u.account_id WHERE u.wa_id=?", (to,))
+                row = cur.fetchone(); conn.close()
+                if row:
+                    acc = { 'id': row[0], 'label': row[1], 'phone_number_id': row[2], 'whatsapp_token': row[3], 'verify_token': row[4], 'is_default': row[5] }
+        except Exception:
+            acc = None
+    if not acc:
+        acc = get_default_account()
+    pnid = (acc or {}).get('phone_number_id') or PHONE_NUMBER_ID
+    token = (acc or {}).get('whatsapp_token') or WHATSAPP_TOKEN
+    if not pnid or not token:
         print('WHATSAPP_TOKEN o PHONE_NUMBER_ID no configurados; omitiendo envío.')
         return {'status': 0, 'body': 'missing creds'}
-    url = f"https://graph.facebook.com/v19.0/{PHONE_NUMBER_ID}/messages"
-    headers = {
-        "Authorization": f"Bearer {WHATSAPP_TOKEN}",
-        "Content-Type": "application/json",
-    }
+    url = f"https://graph.facebook.com/v19.0/{pnid}/messages"
+    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
     try:
         print("➡️ Enviando WA (generic):", payload)
         resp = requests.post(url, headers=headers, json=payload, timeout=10)
@@ -1254,6 +1378,43 @@ def internal_upload():
         return jsonify({"error": str(e)}), 500
 
 
+@app.route('/settings', methods=['GET', 'POST'])
+def settings_page():
+    """Panel para gestionar múltiples cuentas de WhatsApp. Protegido con ?key=VERIFY_TOKEN."""
+    key = request.values.get('key')
+    if key != VERIFY_TOKEN:
+        return 'Forbidden', 403
+    msg = None
+    # Acciones via GET: make_default / delete
+    if request.method == 'GET':
+        action = request.args.get('action')
+        aid = request.args.get('id')
+        if action and aid:
+            try:
+                aid_int = int(aid)
+                if action == 'make_default':
+                    upsert_account(label='', phone_number_id='', whatsapp_token='', verify_token='', is_default=True, account_id=aid_int)
+                    msg = '✅ Cuenta marcada como predeterminada.'
+                elif action == 'delete':
+                    delete_account(aid_int)
+                    msg = '🗑️ Cuenta eliminada.'
+            except Exception:
+                msg = '⚠️ Acción inválida.'
+    # Crear/actualizar via POST (solo crear simple en esta versión)
+    if request.method == 'POST':
+        label = (request.form.get('label') or '').strip()
+        pnid = (request.form.get('phone_number_id') or '').strip()
+        wtok = (request.form.get('whatsapp_token') or '').strip()
+        vtok = (request.form.get('verify_token') or '').strip()
+        is_def = request.form.get('is_default') == '1'
+        if label and pnid and wtok:
+            ok = upsert_account(label, pnid, wtok, vtok, is_def)
+            msg = '✅ Cuenta guardada.' if ok else '❌ No se pudo guardar la cuenta.'
+        else:
+            msg = '⚠️ Faltan campos requeridos.'
+    return render_template('settings.html', accounts=list_accounts(), key=key, message=msg)
+
+
 @app.route('/flow', methods=['GET', 'POST'])
 @app.route('/flow/', methods=['GET', 'POST'])
 def flow_editor():
@@ -1327,19 +1488,32 @@ def flow_builder():
 
 @app.route('/internal/send_test')
 def internal_send_test():
-    """Envía un mensaje de prueba a un número (E.164), protegido con ?key=VERIFY_TOKEN&to=+NNNN&text=Hola."""
+    """Envía un mensaje de prueba a un número (E.164).
+    Params: ?key=VERIFY_TOKEN&to=+NNNN&text=Hola[&account_id=ID]
+    """
     key = request.args.get('key')
     if key != VERIFY_TOKEN:
         return 'Forbidden', 403
     to = request.args.get('to')
     text = request.args.get('text') or 'Prueba desde Fanty'
+    account_id = request.args.get('account_id')
     if not to:
         return 'Falta parámetro to (E.164, ej. +51987654321)', 400
     # Normalizar número: solo dígitos (WA Cloud suele usar sin '+')
     norm_to = ''.join(ch for ch in to if ch.isdigit())
+    # Si se indica account_id, establecerla en g.account temporalmente
+    if account_id:
+        try:
+            conn = sqlite3.connect(CONV_DB_PATH); cur = conn.cursor()
+            cur.execute("SELECT id,label,phone_number_id,whatsapp_token,verify_token,is_default FROM accounts WHERE id=?", (account_id,))
+            row = cur.fetchone(); conn.close()
+            if row:
+                g.account = { 'id': row[0], 'label': row[1], 'phone_number_id': row[2], 'whatsapp_token': row[3], 'verify_token': row[4], 'is_default': row[5] }
+        except Exception:
+            pass
     result = send_whatsapp_text(norm_to, text)
     return jsonify({
-        'phone_number_id': PHONE_NUMBER_ID,
+        'phone_number_id': (getattr(g, 'account', None) or {}).get('phone_number_id') or PHONE_NUMBER_ID,
         'to': norm_to,
         'result': result
     }), 200
@@ -1347,17 +1521,35 @@ def internal_send_test():
 
 @app.route('/internal/phone_info')
 def internal_phone_info():
-    """Obtiene info del PHONE_NUMBER_ID desde Graph (id, display_phone_number y WABA relacionado). Protegido con ?key=VERIFY_TOKEN."""
+    """Obtiene info del PHONE_NUMBER_ID desde Graph.
+    Params: ?key=VERIFY_TOKEN[&account_id=ID]
+    Si no se indica, usa la cuenta por defecto o ENV.
+    """
     key = request.args.get('key')
     if key != VERIFY_TOKEN:
         return jsonify({"status": "forbidden"}), 403
-    if not WHATSAPP_TOKEN or not PHONE_NUMBER_ID:
-        return jsonify({"error": "Faltan WHATSAPP_TOKEN o PHONE_NUMBER_ID"}), 500
-    url = f"https://graph.facebook.com/v19.0/{PHONE_NUMBER_ID}"
+    account_id = request.args.get('account_id')
+    acc = None
+    if account_id:
+        try:
+            conn = sqlite3.connect(CONV_DB_PATH); cur = conn.cursor()
+            cur.execute("SELECT id,label,phone_number_id,whatsapp_token,verify_token,is_default FROM accounts WHERE id=?", (account_id,))
+            row = cur.fetchone(); conn.close()
+            if row:
+                acc = { 'id': row[0], 'label': row[1], 'phone_number_id': row[2], 'whatsapp_token': row[3], 'verify_token': row[4], 'is_default': row[5] }
+        except Exception:
+            pass
+    if not acc:
+        acc = get_default_account()
+    pnid = (acc or {}).get('phone_number_id') or PHONE_NUMBER_ID
+    token = (acc or {}).get('whatsapp_token') or WHATSAPP_TOKEN
+    if not pnid or not token:
+        return jsonify({"error": "Faltan credenciales de WhatsApp"}), 500
+    url = f"https://graph.facebook.com/v19.0/{pnid}"
     params = {
         "fields": "id,display_phone_number,whatsapp_business_account",
     }
-    headers = {"Authorization": f"Bearer {WHATSAPP_TOKEN}"}
+    headers = {"Authorization": f"Bearer {token}"}
     try:
         r = requests.get(url, headers=headers, params=params, timeout=10)
         return jsonify({

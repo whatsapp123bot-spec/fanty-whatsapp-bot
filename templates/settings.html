@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>⚙️ Configuración — Cuentas de WhatsApp</title>
+  <style>
+    body{font-family: Arial, sans-serif; margin:0; background:#f6f7fb; color:#222}
+    header{background:#343a40;color:#fff;padding:16px}
+    main{max-width:920px;margin:24px auto;background:#fff;padding:20px;border-radius:12px;box-shadow:0 6px 16px rgba(0,0,0,0.08)}
+    table{width:100%;border-collapse:collapse;margin-top:8px}
+    th,td{border-bottom:1px solid #eee;padding:8px;text-align:left}
+    .btn{display:inline-block;padding:8px 12px;border-radius:8px;border:0;cursor:pointer;color:#fff;font-weight:600;text-decoration:none}
+    .btn-secondary{background:#6c757d}
+    .btn-danger{background:#b00020}
+    .btn-primary{background:#0b5ed7}
+    .btn-success{background:#198754}
+    .row{display:grid;grid-template-columns:200px 1fr;gap:8px;align-items:center;margin-bottom:8px}
+    .help{font-size:12px;color:#666}
+    input[type=text],input[type=password]{padding:8px;border:1px solid #ddd;border-radius:8px;width:100%}
+    .badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:12px;background:#e9ecef}
+    .badge.default{background:#d1e7dd;color:#0f5132}
+    .top-actions{display:flex;gap:8px;align-items:center;margin-bottom:12px}
+  </style>
+</head>
+<body>
+  <header>
+    <h1>⚙️ Configuración — Cuentas de WhatsApp</h1>
+  </header>
+  <main>
+    {% if message %}
+      <div style="background:#f0f5ff;border:1px solid #b3ccff;padding:10px;border-radius:8px;margin-bottom:12px">{{ message }}</div>
+    {% endif %}
+    <div class="top-actions">
+      <a class="btn btn-secondary" href="/?">← Volver</a>
+      <span class="help">Administra múltiples cuentas de WhatsApp Cloud API sin tocar código.</span>
+    </div>
+
+    <h2 style="margin-top:0">Cuentas registradas</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Etiqueta</th>
+          <th>Phone Number ID</th>
+          <th>Estado</th>
+          <th>Acciones</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for a in accounts %}
+          <tr>
+            <td>{{ a.id }}</td>
+            <td>{{ a.label }}</td>
+            <td><code>{{ a.phone_number_id }}</code></td>
+            <td>
+              {% if a.is_default %}
+                <span class="badge default">Por defecto</span>
+              {% else %}
+                <span class="badge">Secundaria</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if not a.is_default %}
+                <a class="btn btn-success" href="/settings?action=make_default&id={{ a.id }}&key={{ key }}">Hacer por defecto</a>
+              {% endif %}
+              <a class="btn btn-danger" href="/settings?action=delete&id={{ a.id }}&key={{ key }}" onclick="return confirm('¿Eliminar esta cuenta?');">Eliminar</a>
+            </td>
+          </tr>
+        {% endfor %}
+        {% if not accounts %}
+          <tr><td colspan="5" class="help">No hay cuentas registradas. Usa el formulario de abajo para añadir una.</td></tr>
+        {% endif %}
+      </tbody>
+    </table>
+
+    <h2>Agregar/Actualizar cuenta</h2>
+    <form method="post" action="/settings">
+      <input type="hidden" name="key" value="{{ key }}" />
+      <div class="row">
+        <label>Etiqueta</label>
+        <input type="text" name="label" placeholder="Ej: Fanty Principal" required />
+      </div>
+      <div class="row">
+        <label>Phone Number ID</label>
+        <input type="text" name="phone_number_id" placeholder="ID numérico de WhatsApp" required />
+      </div>
+      <div class="row">
+        <label>WhatsApp Token</label>
+        <input type="password" name="whatsapp_token" placeholder="Token de acceso" required />
+      </div>
+      <div class="row">
+        <label>Verify Token</label>
+        <input type="text" name="verify_token" placeholder="Para verificación del webhook" />
+      </div>
+      <div class="row">
+        <label>Marcar por defecto</label>
+        <input type="checkbox" name="is_default" value="1" />
+      </div>
+      <div class="row" style="grid-template-columns:1fr">
+        <button class="btn btn-primary" type="submit">Guardar cuenta</button>
+      </div>
+    </form>
+
+    <p class="help">Nota: La vista previa y el webhook utilizarán la cuenta por defecto si no hay otra asociada al número del usuario.</p>
+  </main>
+</body>
+</html>
