@@ -25,6 +25,64 @@ FB_URL = os.getenv("FB_URL", "https://web.facebook.com/fantasiaintimaa/")
 IG_URL = os.getenv("IG_URL", "https://www.instagram.com/fantasia_intima_lenceria")
 TIKTOK_URL = os.getenv("TIKTOK_URL", "https://www.tiktok.com/@fantasa.ntima")
 
+# Configuración de flujo dinámico (opcional) controlado por JSON
+FLOW_ENABLED = os.getenv("FLOW_ENABLED", "0") == "1"
+FLOW_JSON_PATH = os.path.join(BASE_DIR, 'flow.json')
+FLOW_CONFIG: dict = {}
+
+
+def load_flow_config():
+    """Carga el archivo flow.json a memoria."""
+    global FLOW_CONFIG
+    try:
+        if os.path.exists(FLOW_JSON_PATH):
+            with open(FLOW_JSON_PATH, 'r', encoding='utf-8') as f:
+                FLOW_CONFIG = json.load(f)
+            print("🔄 Flujo cargado:", list(FLOW_CONFIG.get('nodes', {}).keys()))
+        else:
+            FLOW_CONFIG = {}
+    except Exception as e:
+        print("❌ Error cargando flow.json:", e)
+        FLOW_CONFIG = {}
+
+
+def send_flow_node(to: str, node_id: str):
+    """Envía un nodo del flujo como texto + botones (máx. 3)."""
+    node = (FLOW_CONFIG or {}).get('nodes', {}).get(node_id)
+    if not node:
+        return send_whatsapp_text(to, "⚠️ Flujo no disponible en este paso.")
+    text = node.get('text') or ''
+    raw_buttons = (node.get('buttons') or [])[:3]
+    buttons = []
+    for b in raw_buttons:
+        title = b.get('title') or 'Opción'
+        target = None
+        if b.get('next'):
+            target = f"FLOW:{b['next']}"
+        elif b.get('id'):
+            target = b['id']
+        if not target:
+            continue
+        buttons.append({"type": "reply", "reply": {"id": target, "title": title}})
+    if buttons:
+        payload = {
+            "messaging_product": "whatsapp",
+            "to": to,
+            "type": "interactive",
+            "interactive": {
+                "type": "button",
+                "body": {"text": text},
+                "action": {"buttons": buttons}
+            }
+        }
+        return _post_wa(payload)
+    else:
+        return send_whatsapp_text(to, text)
+
+
+# Cargar flujo al iniciar
+load_flow_config()
+
 @app.route('/')
 def home():
     # Pantalla principal: Vista previa o Agregar catálogos
@@ -79,7 +137,11 @@ def webhook():
                                 low = (text or '').strip().lower()
                                 greetings = ("hola", "holi", "buenas", "buenos días", "buenas tardes", "buenas noches")
                                 if any(g in low for g in greetings):
-                                    send_whatsapp_buttons_welcome(from_wa)
+                                    # Si hay flujo dinámico habilitado, usarlo; si no, menú estático
+                                    if FLOW_ENABLED and FLOW_CONFIG.get('start_node'):
+                                        send_flow_node(from_wa, FLOW_CONFIG.get('start_node'))
+                                    else:
+                                        send_whatsapp_buttons_welcome(from_wa)
                                 else:
                                     reply_text = (
                                         f"👋 Hola, soy Fanty. Recibí tu mensaje: {text}" if text else
@@ -95,6 +157,11 @@ def webhook():
                                 elif itype == 'list_reply':
                                     reply_id = interactive.get('list_reply', {}).get('id')
                                 print("🔘 INTERACTIVE ID:", reply_id)
+                                # Ramas del flujo dinámico (ids tipo FLOW:<next>)
+                                if reply_id and isinstance(reply_id, str) and reply_id.startswith('FLOW:'):
+                                    next_id = reply_id.split(':', 1)[1]
+                                    send_flow_node(from_wa, next_id)
+                                    continue
                                 if reply_id in ('VER_CATALOGO', 'VOLVER_CATALOGO'):
                                     # Mostrar las 3 categorías disponibles del catálogo
                                     send_whatsapp_buttons_categories(from_wa)
@@ -758,6 +825,45 @@ def internal_health():
         except Exception as e:
             info["subscribed_apps_error"] = str(e)
     return jsonify(info)
+
+
+@app.route('/flow', methods=['GET', 'POST'])
+def flow_editor():
+    """Editor simple del flujo en JSON. Protegido con ?key=VERIFY_TOKEN."""
+    key = request.args.get('key')
+    if key != VERIFY_TOKEN:
+        return 'Forbidden', 403
+    if request.method == 'POST':
+        content = request.form.get('content', '')
+        try:
+            data = json.loads(content)
+            with open(FLOW_JSON_PATH, 'w', encoding='utf-8') as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+            load_flow_config()
+            flash('✅ Flujo guardado correctamente.')
+            return redirect(url_for('flow_editor', key=key))
+        except Exception as e:
+            flash('❌ Error guardando flujo: ' + str(e))
+            return render_template('flow.html', content=content)
+    else:
+        current = ''
+        try:
+            if os.path.exists(FLOW_JSON_PATH):
+                with open(FLOW_JSON_PATH, 'r', encoding='utf-8') as f:
+                    current = f.read()
+        except Exception:
+            current = ''
+        return render_template('flow.html', content=current)
+
+
+@app.route('/internal/reload_flow')
+def internal_reload_flow():
+    """Recarga flow.json a memoria. Protegido con ?key=VERIFY_TOKEN."""
+    key = request.args.get('key')
+    if key != VERIFY_TOKEN:
+        return 'Forbidden', 403
+    load_flow_config()
+    return jsonify({"status": "ok", "nodes": list((FLOW_CONFIG or {}).get('nodes', {}).keys())})
 
 
 @app.route('/internal/send_test')

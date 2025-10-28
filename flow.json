@@ -1,0 +1,21 @@
+{
+  "start_node": "welcome",
+  "nodes": {
+    "welcome": {
+      "text": "👋 Hola, soy Fanty, tu asistente. ¿Qué deseas hacer hoy?",
+      "buttons": [
+        { "title": "📦 Ver catálogo", "next": "categorias" },
+        { "title": "ℹ️ Hablar con asesor", "id": "HABLAR_ASESOR" },
+        { "title": "💬 Más opciones", "id": "MAS_OPCIONES" }
+      ]
+    },
+    "categorias": {
+      "text": "Tenemos estas categorías disponibles. Elige una:",
+      "buttons": [
+        { "title": "🔥 Disfraz Sexy", "id": "CATALOGO_DISFRAZ" },
+        { "title": "👙 Lencería", "id": "CATALOGO_LENCERIA" },
+        { "title": "🧦 Mallas", "id": "CATALOGO_MALLAS" }
+      ]
+    }
+  }
+}
