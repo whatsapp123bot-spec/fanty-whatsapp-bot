@@ -29,7 +29,7 @@ IG_URL = os.getenv("IG_URL", "https://www.instagram.com/fantasia_intima_lenceria
 TIKTOK_URL = os.getenv("TIKTOK_URL", "https://www.tiktok.com/@fantasa.ntima")
 
 # Configuración de flujo dinámico (opcional) controlado por JSON
-FLOW_ENABLED = os.getenv("FLOW_ENABLED", "0") == "1"
+FLOW_ENABLED = os.getenv("FLOW_ENABLED", "0") == "1"  # Obsoleto en webhook: preferimos flag en flow.json
 FLOW_JSON_PATH = os.path.join(BASE_DIR, 'flow.json')
 FLOW_CONFIG: dict = {}
 
@@ -182,16 +182,19 @@ def webhook():
                             print(f"ℹ️ Tipo de mensaje no manejado: {msg_type}")
                         print(f"📱 DE: {from_wa} | TIPO: {msg_type} | TEXTO: {text}")
                         if from_wa:
-                            # Lógica: si saluda, enviar botones de bienvenida; si pulsa botones, manejar IDs; si no, eco.
+                            # Lógica basada SOLO en el flujo del panel (flow.json)
                             if msg_type == 'text':
                                 low = (text or '').strip().lower()
                                 greetings = ("hola", "holi", "buenas", "buenos días", "buenas tardes", "buenas noches")
-                                # Flow dinámico con palabras clave en nodos tipo 'start'
-                                if FLOW_ENABLED and (FLOW_CONFIG or {}).get('nodes'):
+                                flow_nodes = (FLOW_CONFIG or {}).get('nodes') or {}
+                                flow_enabled = (FLOW_CONFIG or {}).get('enabled', True)
+                                if flow_enabled and flow_nodes:
                                     matched_node = None
                                     try:
-                                        for nid, ndef in (FLOW_CONFIG.get('nodes') or {}).items():
-                                            kws_raw = (ndef.get('keywords') or '') if (ndef.get('type') or 'action').lower() == 'start' else ''
+                                        for nid, ndef in flow_nodes.items():
+                                            if (ndef.get('type') or 'action').lower() != 'start':
+                                                continue
+                                            kws_raw = (ndef.get('keywords') or '')
                                             if not kws_raw:
                                                 continue
                                             kws = [k.strip().lower() for k in kws_raw.split(',') if k.strip()]
@@ -204,22 +207,7 @@ def webhook():
                                         send_flow_node(from_wa, matched_node)
                                     elif FLOW_CONFIG.get('start_node') and any(g in low for g in greetings):
                                         send_flow_node(from_wa, FLOW_CONFIG.get('start_node'))
-                                    else:
-                                        # Si no hay match, responder eco corto
-                                        reply_text = (
-                                            f"👋 Hola, soy Fanty. Recibí tu mensaje: {text}" if text else
-                                            "👋 Hola, soy Fanty. Recibí tu mensaje."
-                                        )
-                                        send_whatsapp_text(from_wa, reply_text)
-                                else:
-                                    if any(g in low for g in greetings):
-                                        send_whatsapp_buttons_welcome(from_wa)
-                                    else:
-                                        reply_text = (
-                                            f"👋 Hola, soy Fanty. Recibí tu mensaje: {text}" if text else
-                                            "👋 Hola, soy Fanty. Recibí tu mensaje."
-                                        )
-                                        send_whatsapp_text(from_wa, reply_text)
+                                    # Si no hay match, no respondemos (solo flujo gestionado por panel)
                             elif msg_type == 'interactive':
                                 interactive = message.get('interactive', {})
                                 itype = interactive.get('type')
@@ -229,73 +217,12 @@ def webhook():
                                 elif itype == 'list_reply':
                                     reply_id = interactive.get('list_reply', {}).get('id')
                                 print("🔘 INTERACTIVE ID:", reply_id)
-                                # Ramas del flujo dinámico (ids tipo FLOW:<next>)
+                                # Ramas del flujo del panel (ids tipo FLOW:<next>)
                                 if reply_id and isinstance(reply_id, str) and reply_id.startswith('FLOW:'):
                                     next_id = reply_id.split(':', 1)[1]
                                     send_flow_node(from_wa, next_id)
-                                    continue
-                                if reply_id in ('VER_CATALOGO', 'VOLVER_CATALOGO'):
-                                    # Mostrar las 3 categorías disponibles del catálogo
-                                    send_whatsapp_buttons_categories(from_wa)
-                                elif reply_id == 'HABLAR_ASESOR':
-                                    send_whatsapp_buttons_advisor(from_wa)
-                                elif reply_id == 'MAS_OPCIONES':
-                                    send_whatsapp_more_options(from_wa)
-                                elif reply_id == 'VER_PAGOS':
-                                    send_whatsapp_buttons_payments(from_wa)
-                                elif reply_id == 'VER_ENVIO':
-                                    send_whatsapp_buttons_shipping(from_wa)
-                                elif reply_id == 'MENU_PRINCIPAL':
-                                    send_whatsapp_buttons_welcome(from_wa)
-                                elif reply_id in ('CATALOGO_DISFRAZ', 'CATALOGO_LENCERIA', 'CATALOGO_MALLAS'):
-                                    # Enviar PDF como documento si existe; fallback a link por texto
-                                    fname = {
-                                        'CATALOGO_DISFRAZ': 'disfraz.pdf',
-                                        'CATALOGO_LENCERIA': 'lenceria.pdf',
-                                        'CATALOGO_MALLAS': 'mallas.pdf',
-                                    }.get(reply_id)
-                                    fpath = os.path.join(CATALOG_DIR, fname)
-                                    if os.path.exists(fpath):
-                                        # Construir URL absoluta al estático
-                                        base = request.url_root.rstrip('/')
-                                        rel = url_for('static', filename=f'catalogos/{fname}')
-                                        link = base + rel
-                                        label = 'Catálogo'
-                                        if reply_id == 'CATALOGO_DISFRAZ':
-                                            label = '🔥 Catálogo Disfraz Sexy'
-                                        elif reply_id == 'CATALOGO_LENCERIA':
-                                            label = '👙 Catálogo Lencería'
-                                        elif reply_id == 'CATALOGO_MALLAS':
-                                            label = '🧦 Catálogo Mallas'
-                                        r = send_whatsapp_document(from_wa, link, fname, caption=label)
-                                        if not r or r.get('status', 500) >= 400:
-                                            # Fallback a link por texto
-                                            send_whatsapp_text(from_wa, f"{label}: {link}")
-                                        # Después de enviar el catálogo, ofrecer siguientes pasos guiados
-                                        send_whatsapp_post_catalog_options(from_wa)
-                                    else:
-                                        send_whatsapp_text(from_wa, '⚠️ Aún no hay catálogo cargado para esa categoría.')
-                                elif reply_id == 'POSTCATALOGO_COMPRAR':
-                                    # Preguntar ubicación para definir métodos de envío
-                                    send_whatsapp_buttons_location(from_wa)
-                                elif reply_id == 'POSTCATALOGO_IR_TIENDA':
-                                    send_whatsapp_store_link(from_wa)
-                                elif reply_id == 'UBIC_LIMA':
-                                    send_whatsapp_buttons_shipping_lima(from_wa)
-                                elif reply_id == 'UBIC_PROVINCIAS':
-                                    send_whatsapp_buttons_shipping_provincias(from_wa)
-                                elif reply_id == 'ENVIO_LIMA_TREN':
-                                    send_whatsapp_buttons_lima_train(from_wa)
-                                elif reply_id == 'ENVIO_LIMA_DELIVERY':
-                                    send_whatsapp_buttons_lima_delivery(from_wa)
-                                elif reply_id == 'PROV_PROVIDE_DATA':
-                                    send_whatsapp_text(from_wa, (
-                                        '✍️ Por favor responde a este chat con: "Región - Provincia - Distrito (si aplica)"\n'
-                                        'Así te cotizamos el costo de envío y te ayudamos a completar tu pedido. '
-                                        'Si prefieres, también puedes hablar con una asesora con el botón del menú.'
-                                    ))
-                                else:
-                                    send_whatsapp_text(from_wa, f"Recibí tu selección: {text}")
+                                # Para cualquier otro id, no respondemos (todo se gestiona desde el panel)
+                                
                     else:
                         statuses = value.get('statuses')
                         if statuses:

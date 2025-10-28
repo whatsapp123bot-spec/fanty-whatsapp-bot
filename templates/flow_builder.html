@@ -153,6 +153,7 @@
     }
 
     function ensureDefaults(){
+      if (typeof flow.enabled !== 'boolean') flow.enabled = true;
       if (!flow.nodes) flow.nodes = {};
       // Si no hay nodos, crear flujo base: inicio -> welcome -> categorias
       if (Object.keys(flow.nodes).length === 0) {
@@ -173,11 +174,29 @@
             type: 'action',
             text: 'Elige una categoría:',
             buttons: [
-              { title: '🔥 Disfraz Sexy', id: 'CATALOGO_DISFRAZ' },
-              { title: '👙 Lencería', id: 'CATALOGO_LENCERIA' },
-              { title: '🧦 Mallas', id: 'CATALOGO_MALLAS' }
+              { title: '🔥 Disfraz Sexy', next: 'cat_disfraz' },
+              { title: '👙 Lencería', next: 'cat_lenceria' },
+              { title: '🧦 Mallas', next: 'cat_mallas' }
             ],
             pos: { x: 800, y: 40 }
+          },
+          'cat_disfraz': {
+            type: 'action',
+            text: 'Sube el PDF o imágenes del catálogo Disfraz en "Agregar archivo/foto" (se enviarán antes del texto).',
+            buttons: [ { title: '🔙 Volver', next: 'categorias' } ],
+            pos: { x: 800, y: 260 }
+          },
+          'cat_lenceria': {
+            type: 'action',
+            text: 'Sube el PDF o imágenes del catálogo Lencería en "Agregar archivo/foto" (se enviarán antes del texto).',
+            buttons: [ { title: '🔙 Volver', next: 'categorias' } ],
+            pos: { x: 1160, y: 260 }
+          },
+          'cat_mallas': {
+            type: 'action',
+            text: 'Sube el PDF o imágenes del catálogo Mallas en "Agregar archivo/foto" (se enviarán antes del texto).',
+            buttons: [ { title: '🔙 Volver', next: 'categorias' } ],
+            pos: { x: 1440, y: 260 }
           }
         };
         flow.start_node = 'start';
@@ -277,6 +296,12 @@
       }
 
       if ((node.type||'action') === 'start') {
+        // Toggle de encendido/apagado del flujo (global), visible en cajita de inicio
+        const toggleWrap = document.createElement('div'); toggleWrap.style.display='flex'; toggleWrap.style.alignItems='center'; toggleWrap.style.gap='8px'; toggleWrap.style.margin='4px 0 6px';
+        const toggle = document.createElement('input'); toggle.type='checkbox'; toggle.checked = !!flow.enabled; toggle.id = `en_${id}`;
+        toggle.onchange = () => { flow.enabled = !!toggle.checked; };
+        const tl = document.createElement('label'); tl.setAttribute('for', `en_${id}`); tl.textContent = 'Flujo encendido'; tl.style.fontSize='13px'; tl.style.color='#333';
+        toggleWrap.appendChild(toggle); toggleWrap.appendChild(tl); el.appendChild(toggleWrap);
         const kw = document.createElement('input'); kw.placeholder='Palabras clave separadas por coma (hola, holi, buenas)'; kw.value = (node.keywords||'');
         kw.style.width = '100%'; kw.oninput = () => { flow.nodes[id].keywords = kw.value; };
         el.appendChild(kw);
@@ -565,7 +590,7 @@
         }
         if (!Array.isArray(flow.nodes[k].assets)) delete flow.nodes[k].assets; // solo guardar si existe bien formada
       }
-      const payload = JSON.stringify(flow, null, 2);
+  const payload = JSON.stringify(flow, null, 2);
       // Guardar por fetch JSON para no salir del builder
       const fd = new FormData();
       fd.append('content', payload);
