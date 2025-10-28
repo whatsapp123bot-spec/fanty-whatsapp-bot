@@ -287,6 +287,29 @@ def internal_send_test():
     send_whatsapp_text(to, text)
     return 'ok', 200
 
+
+@app.route('/internal/phone_info')
+def internal_phone_info():
+    """Obtiene info del PHONE_NUMBER_ID desde Graph (id, display_phone_number y WABA relacionado). Protegido con ?key=VERIFY_TOKEN."""
+    key = request.args.get('key')
+    if key != VERIFY_TOKEN:
+        return jsonify({"status": "forbidden"}), 403
+    if not WHATSAPP_TOKEN or not PHONE_NUMBER_ID:
+        return jsonify({"error": "Faltan WHATSAPP_TOKEN o PHONE_NUMBER_ID"}), 500
+    url = f"https://graph.facebook.com/v19.0/{PHONE_NUMBER_ID}"
+    params = {
+        "fields": "id,display_phone_number,whatsapp_business_account",
+    }
+    headers = {"Authorization": f"Bearer {WHATSAPP_TOKEN}"}
+    try:
+        r = requests.get(url, headers=headers, params=params, timeout=10)
+        return jsonify({
+            "status": r.status_code,
+            "body": r.json() if r.headers.get('content-type','').startswith('application/json') else r.text
+        }), r.status_code
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 if __name__ == '__main__':
     # En despliegues como Render, el puerto llega por la variable de entorno PORT
     port = int(os.environ.get('PORT', 5000))
