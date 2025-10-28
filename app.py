@@ -52,10 +52,30 @@ def webhook():
                         message = messages[0]
                         print("💬 MENSAJE DETECTADO:", message)
                         from_wa = message.get('from')
-                        text = message.get('text', {}).get('body', '')
-                        print(f"📱 DE: {from_wa} | TEXTO: {text}")
-                        if from_wa and text:
-                            send_whatsapp_text(from_wa, f"👋 Hola, soy Fanty. Recibí tu mensaje: {text}")
+                        msg_type = message.get('type')
+                        text = ''
+                        if msg_type == 'text':
+                            text = message.get('text', {}).get('body', '')
+                        elif msg_type == 'interactive':
+                            interactive = message.get('interactive', {})
+                            # Puede ser button_reply o list_reply
+                            if interactive.get('type') == 'button_reply':
+                                text = interactive.get('button_reply', {}).get('title', '')
+                            elif interactive.get('type') == 'list_reply':
+                                text = interactive.get('list_reply', {}).get('title', '')
+                        else:
+                            print(f"ℹ️ Tipo de mensaje no manejado: {msg_type}")
+                        print(f"📱 DE: {from_wa} | TIPO: {msg_type} | TEXTO: {text}")
+                        if from_wa:
+                            reply_text = (
+                                f"👋 Hola, soy Fanty. Recibí tu mensaje: {text}" if text else
+                                "👋 Hola, soy Fanty. Recibí tu mensaje."
+                            )
+                            send_whatsapp_text(from_wa, reply_text)
+                    else:
+                        statuses = value.get('statuses')
+                        if statuses:
+                            print("📬 EVENTO DE ESTADO:", statuses)
     except Exception as e:
         # No romper el webhook ante payloads inesperados
         import traceback
@@ -100,7 +120,9 @@ def send_whatsapp_text(to: str, body: str) -> None:
         "text": {"body": body},
     }
     try:
+        print("➡️ Enviando mensaje WA:", payload)
         resp = requests.post(url, headers=headers, json=payload, timeout=10)
+        print("⬅️ Respuesta WA:", resp.status_code, resp.text)
         if resp.status_code >= 400:
             print('Error enviando mensaje WA:', resp.status_code, resp.text)
     except Exception as e:
@@ -226,6 +248,44 @@ def admin_upload():
         'mallas': os.path.exists(os.path.join(CATALOG_DIR, 'mallas.pdf')),
     }
     return render_template('upload.html', exists=exists)
+
+
+@app.route('/internal/health')
+def internal_health():
+    """Revisa estado básico de la app y credenciales. Protegido con ?key=VERIFY_TOKEN."""
+    key = request.args.get('key')
+    if key != VERIFY_TOKEN:
+        return jsonify({"status": "forbidden"}), 403
+    info = {
+        "verify_token_set": bool(VERIFY_TOKEN),
+        "whatsapp_token_set": bool(WHATSAPP_TOKEN),
+        "phone_number_id": PHONE_NUMBER_ID or None,
+    }
+    # Intentar consultar suscripciones (si hay token y phone_number_id)
+    if WHATSAPP_TOKEN and PHONE_NUMBER_ID:
+        try:
+            url = f"https://graph.facebook.com/v19.0/{PHONE_NUMBER_ID}/subscribed_apps"
+            headers = {"Authorization": f"Bearer {WHATSAPP_TOKEN}"}
+            r = requests.get(url, headers=headers, timeout=10)
+            info["subscribed_apps_status"] = r.status_code
+            info["subscribed_apps_body"] = r.text
+        except Exception as e:
+            info["subscribed_apps_error"] = str(e)
+    return jsonify(info)
+
+
+@app.route('/internal/send_test')
+def internal_send_test():
+    """Envía un mensaje de prueba a un número (E.164), protegido con ?key=VERIFY_TOKEN&to=+NNNN&text=Hola."""
+    key = request.args.get('key')
+    if key != VERIFY_TOKEN:
+        return 'Forbidden', 403
+    to = request.args.get('to')
+    text = request.args.get('text') or 'Prueba desde Fanty'
+    if not to:
+        return 'Falta parámetro to (E.164, ej. +51987654321)', 400
+    send_whatsapp_text(to, text)
+    return 'ok', 200
 
 if __name__ == '__main__':
     # En despliegues como Render, el puerto llega por la variable de entorno PORT
