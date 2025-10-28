@@ -1,0 +1,16 @@
+{
+  "name": "fanty-bridge",
+  "version": "1.0.0",
+  "description": "Puente WhatsApp Web.js ↔ flujo Fanty (Flask)",
+  "main": "index.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "axios": "^1.7.2",
+    "dotenv": "^16.4.5",
+    "qrcode-terminal": "^0.12.0",
+    "whatsapp-web.js": "^1.23.0"
+  }
+}

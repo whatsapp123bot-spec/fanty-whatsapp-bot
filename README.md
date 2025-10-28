@@ -60,6 +60,19 @@ Abre en el navegador: http://127.0.0.1:5000
 - Desde el panel abre el Editor visual (🔧) con tu clave (`VERIFY_TOKEN`).
 - En el editor visual usa “👀 Vista previa” para abrir `/chat` y probar el flujo (escribe “hola/holi”).
 
+### (Opcional) Probar con tu WhatsApp real (no oficial)
+
+En `bridge/` hay un puente con WhatsApp Web.js para pruebas rápidas usando tu número:
+
+```powershell
+cd bridge
+npm install
+$env:FANTY_BASE = 'https://fanty-whatsapp-bot.onrender.com'  # o tu Flask local
+npm start
+```
+
+Escanea el QR y prueba escribiendo "hola" desde otro teléfono. El bot responde con tu flujo actual.
+
 ## Exponer a Internet (opcional)
 
 Con Ngrok:
