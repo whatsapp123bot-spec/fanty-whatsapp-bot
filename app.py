@@ -115,11 +115,14 @@ def set_human_requested(wa_id: str, value: bool):
         print('⚠️ No se pudo actualizar human_requested:', e)
 
 
-def list_conversations(limit: int = 100):
+def list_conversations(limit: int = 100, human_only: bool = False):
     try:
         conn = sqlite3.connect(CONV_DB_PATH)
         cur = conn.cursor()
-        cur.execute("SELECT wa_id, name, human_requested, last_message_at FROM users ORDER BY last_message_at DESC LIMIT ?", (limit,))
+        if human_only:
+            cur.execute("SELECT wa_id, name, human_requested, last_message_at FROM users WHERE human_requested=1 ORDER BY last_message_at DESC LIMIT ?", (limit,))
+        else:
+            cur.execute("SELECT wa_id, name, human_requested, last_message_at FROM users ORDER BY last_message_at DESC LIMIT ?", (limit,))
         rows = cur.fetchall()
         conn.close()
         return [
@@ -291,7 +294,8 @@ def api_list_conversations():
     key = request.args.get('key')
     if key != VERIFY_TOKEN:
         return jsonify({'error': 'forbidden'}), 403
-    data = list_conversations(limit=int(request.args.get('limit', '100')))
+    human_only = request.args.get('live') == '1'
+    data = list_conversations(limit=int(request.args.get('limit', '100')), human_only=human_only)
     return jsonify({'items': data})
 
 
