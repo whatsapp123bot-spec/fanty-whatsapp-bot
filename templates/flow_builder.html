@@ -25,10 +25,11 @@
     .sidebar .node-item button { padding:4px 8px; border-radius:6px; border:0; cursor:pointer; }
     .canvas { position:relative; background:#f0f2f7; border-radius:12px; overflow:auto; box-shadow: 0 6px 16px rgba(0,0,0,.06); }
     .nodes { position:relative; padding:20px; min-width: 1200px; min-height: 800px; }
-    .node { position:absolute; width: 300px; background:var(--card); border-radius:12px; padding:10px; box-shadow: 0 6px 16px rgba(0,0,0,.08); border:1px solid #e8e8f0; }
-    .node .head { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:6px; }
+  .node { position:absolute; width: 300px; background:var(--card); border-radius:12px; padding:10px; box-shadow: 0 6px 16px rgba(0,0,0,.08); border:1px solid #e8e8f0; }
+  .node .head { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:6px; }
     .node .head input[type="text"] { flex:1; font-weight:700; padding:6px 8px; border:1px solid #ddd; border-radius:8px; }
     .node .head .start { font-size:12px; color:#fff; background:#ff7a59; padding:2px 6px; border-radius:6px; }
+  .node .head .drag { cursor:move; user-select:none; padding:2px 6px; color:#888; }
     .node textarea { width:100%; min-height: 80px; padding:8px; border:1px solid #ddd; border-radius:8px; font-size:14px; }
     .btns { margin-top:6px; }
     .btns .row { display:grid; grid-template-columns: 1fr 90px 1fr auto; gap:6px; align-items:center; margin-bottom:6px; }
@@ -86,11 +87,12 @@
     let flow = {{ flow|tojson }};
     if (!flow || typeof flow !== 'object') flow = { start_node: null, nodes: {} };
 
-    const nodesEl = document.getElementById('nodes');
+  const nodesEl = document.getElementById('nodes');
     const linesSvg = document.querySelector('svg.lines');
     const canvasEl = document.querySelector('.canvas');
     const startNodeSel = document.getElementById('startNode');
     const nodeListEl = document.getElementById('nodeList');
+  let dragging = null; // { id, el, dx, dy }
 
     function uid(base){
       let n = 1; let id = base || 'node';
@@ -125,9 +127,13 @@
       let i=0;
       const cols = 3; const gapX=360, gapY=220; // simple auto-grid
       Object.entries(flow.nodes).forEach(([id, node]) => {
-        const x = (i % cols) * gapX + 40;
-        const y = Math.floor(i / cols) * gapY + 40;
-        nodesEl.appendChild(renderNodeCard(id, node, x, y));
+        // Si el nodo no tiene posición, asignar una por grilla y guardarla
+        if (!node.pos || typeof node.pos.x !== 'number' || typeof node.pos.y !== 'number') {
+          const x = (i % cols) * gapX + 40;
+          const y = Math.floor(i / cols) * gapY + 40;
+          node.pos = { x, y };
+        }
+        nodesEl.appendChild(renderNodeCard(id, node, node.pos.x, node.pos.y));
         i++;
       });
 
@@ -155,6 +161,8 @@
       el.innerHTML = '';
 
       const head = document.createElement('div'); head.className='head';
+      const drag = document.createElement('span'); drag.className='drag'; drag.textContent='⠿'; drag.title='Arrastra para mover';
+      head.appendChild(drag);
       const title = document.createElement('input'); title.type='text'; title.value = id; title.title='ID del nodo';
       title.addEventListener('change', () => renameNode(id, title.value.trim()));
       head.appendChild(title);
@@ -173,6 +181,9 @@
       add.onclick = () => { addButton(id); };
       btns.appendChild(add);
       el.appendChild(btns);
+
+      // Drag & drop por la cabecera (manilla)
+      drag.addEventListener('mousedown', (e) => startDrag(e, el, id));
 
       return el;
     }
@@ -294,9 +305,42 @@
       });
     }
 
+    function startDrag(e, el, id){
+      e.preventDefault();
+      const r = el.getBoundingClientRect();
+      dragging = { id, el, offsetX: e.clientX - r.left, offsetY: e.clientY - r.top };
+      document.addEventListener('mousemove', onDragMove);
+      document.addEventListener('mouseup', endDrag);
+    }
+    function onDragMove(e){
+      if (!dragging) return;
+      const host = nodesEl.getBoundingClientRect();
+      let x = e.clientX - host.left - dragging.offsetX;
+      let y = e.clientY - host.top - dragging.offsetY;
+      // Limitar a valores no negativos
+      x = Math.max(0, x); y = Math.max(0, y);
+      dragging.el.style.left = x + 'px';
+      dragging.el.style.top = y + 'px';
+      const n = flow.nodes[dragging.id];
+      if (n) n.pos = { x, y };
+      drawEdges();
+    }
+    function endDrag(){
+      document.removeEventListener('mousemove', onDragMove);
+      document.removeEventListener('mouseup', endDrag);
+      dragging = null;
+    }
+
     function saveFlow(){
       // Normalizar botones a solo next o id
       for (const k of Object.keys(flow.nodes)) {
+        // Mantener posición actual
+        const card = nodesEl.querySelector(`.node[data-node-id="${k}"]`);
+        if (card) {
+          const left = parseInt(card.style.left || '0', 10);
+          const top = parseInt(card.style.top || '0', 10);
+          flow.nodes[k].pos = { x: left, y: top };
+        }
         flow.nodes[k].buttons = (flow.nodes[k].buttons||[]).slice(0, FLOW_LIMIT).map(b => {
           const out = { title: b.title||'Opción' };
           if (b.next) out.next = b.next; else if (b.id) out.id = b.id.trim();
