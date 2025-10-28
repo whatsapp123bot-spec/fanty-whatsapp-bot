@@ -200,7 +200,18 @@ def send_flow_node(to: str, node_id: str):
             lines.append(text)
         else:
             lines.append("Te estamos transfiriendo con una asesora humana. Un momento por favor.")
-        if node.get('include_links', True):
+        links_cfg = node.get('links') or {}
+        if isinstance(links_cfg, dict) and any((links_cfg.get('web') or {}).get('enabled') or (links_cfg.get('fb') or {}).get('enabled') or (links_cfg.get('ig') or {}).get('enabled') or (links_cfg.get('tiktok') or {}).get('enabled')):
+            lines.append("\nMientras tanto, puedes revisar:")
+            def _add_line(label, key):
+                item = links_cfg.get(key) or {}
+                if item.get('enabled') and (item.get('url') or '').strip():
+                    lines.append(f"• {label}: {item.get('url').strip()}")
+            _add_line('Web', 'web')
+            _add_line('Facebook', 'fb')
+            _add_line('Instagram', 'ig')
+            _add_line('TikTok', 'tiktok')
+        elif node.get('include_links', True):
             lines.append("\nMientras tanto, puedes revisar:")
             if STORE_URL:
                 lines.append(f"• Web: {STORE_URL}")
@@ -1200,7 +1211,15 @@ def flow_builder():
     except Exception:
         pass
     # Render con los datos actuales y la key para reusar el guardado en /flow
-    return render_template('flow_builder.html', flow=current, key=key)
+    return render_template(
+        'flow_builder.html',
+        flow=current,
+        key=key,
+        store_url=STORE_URL,
+        fb_url=FB_URL,
+        ig_url=IG_URL,
+        tiktok_url=TIKTOK_URL,
+    )
 
 
 @app.route('/internal/send_test')

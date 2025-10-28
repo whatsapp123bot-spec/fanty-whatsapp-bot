@@ -140,6 +140,13 @@
     const FLOW_LIMIT = 3;
     let flow = {{ flow|tojson }};
   if (!flow || typeof flow !== 'object') flow = { start_node: null, nodes: {} };
+    // Defaults para links (inyectados desde el backend)
+    const DEFAULT_LINKS = {
+      web: {{ (store_url or '')|tojson }},
+      fb: {{ (fb_url or '')|tojson }},
+      ig: {{ (ig_url or '')|tojson }},
+      tiktok: {{ (tiktok_url or '')|tojson }}
+    };
 
   const nodesEl = document.getElementById('nodes');
     const linesSvg = document.querySelector('svg.lines');
@@ -264,12 +271,49 @@
         const ta = document.createElement('textarea'); ta.value = node.text || 'Te estamos transfiriendo con una asesora humana. Un momento por favor.';
         ta.placeholder = 'Texto opcional que se enviará'; ta.addEventListener('input', () => { flow.nodes[id].text = ta.value; });
         el.appendChild(ta);
-        // Toggle para incluir links de redes y web
-        const lwrap = document.createElement('div'); lwrap.style.display='flex'; lwrap.style.alignItems='center'; lwrap.style.gap='8px'; lwrap.style.marginTop='6px';
-        const lin = document.createElement('input'); lin.type='checkbox'; lin.id = `links_${id}`; lin.checked = (typeof node.include_links === 'boolean') ? !!node.include_links : true;
-        lin.onchange = () => { flow.nodes[id].include_links = !!lin.checked; };
-        const ll = document.createElement('label'); ll.setAttribute('for', `links_${id}`); ll.textContent = 'Incluir links de web y redes sociales'; ll.style.fontSize='13px'; ll.style.color='#333';
-        lwrap.appendChild(lin); lwrap.appendChild(ll); el.appendChild(lwrap);
+        // Links configurables (web y redes) con switches y URLs
+        const linksBox = document.createElement('div'); linksBox.className='assets';
+        const title = document.createElement('div'); title.style.fontWeight='700'; title.style.marginBottom='6px'; title.textContent='Links a mostrar mientras espera';
+        linksBox.appendChild(title);
+        const list = document.createElement('div'); list.style.display='flex'; list.style.flexDirection='column'; list.style.gap='6px';
+        // Inicializar links del nodo si no existen
+        const initIfNeeded = () => {
+          if (!flow.nodes[id].links) {
+            flow.nodes[id].links = {
+              web: { enabled: !!DEFAULT_LINKS.web, url: DEFAULT_LINKS.web||'' },
+              fb: { enabled: !!DEFAULT_LINKS.fb, url: DEFAULT_LINKS.fb||'' },
+              ig: { enabled: !!DEFAULT_LINKS.ig, url: DEFAULT_LINKS.ig||'' },
+              tiktok: { enabled: !!DEFAULT_LINKS.tiktok, url: DEFAULT_LINKS.tiktok||'' },
+            };
+            if (typeof flow.nodes[id].include_links === 'boolean') {
+              const on = !!flow.nodes[id].include_links;
+              Object.keys(flow.nodes[id].links).forEach(k => flow.nodes[id].links[k].enabled = on && !!flow.nodes[id].links[k].url);
+            }
+          }
+        };
+        initIfNeeded();
+
+        const mkRow = (key, label) => {
+          const row = document.createElement('div'); row.style.display='grid'; row.style.gridTemplateColumns='22px 1fr'; row.style.gap='8px'; row.style.alignItems='center';
+          const chk = document.createElement('input'); chk.type='checkbox'; chk.checked = !!(flow.nodes[id].links?.[key]?.enabled);
+          chk.onchange = () => { if (!flow.nodes[id].links) flow.nodes[id].links={}; if (!flow.nodes[id].links[key]) flow.nodes[id].links[key]={}; flow.nodes[id].links[key].enabled = !!chk.checked; syncIncludeLinks(); };
+          const url = document.createElement('input'); url.placeholder = label + ' URL'; url.value = (flow.nodes[id].links?.[key]?.url || ''); url.style.width='100%';
+          url.oninput = () => { if (!flow.nodes[id].links) flow.nodes[id].links={}; if (!flow.nodes[id].links[key]) flow.nodes[id].links[key]={}; flow.nodes[id].links[key].url = url.value.trim(); };
+          row.appendChild(chk); row.appendChild(url);
+          return row;
+        };
+        const syncIncludeLinks = () => {
+          const l = flow.nodes[id].links || {};
+          const anyOn = ['web','fb','ig','tiktok'].some(k => !!(l[k]?.enabled));
+          flow.nodes[id].include_links = anyOn;
+        };
+        list.appendChild(mkRow('web', 'Web'));
+        list.appendChild(mkRow('fb', 'Facebook'));
+        list.appendChild(mkRow('ig', 'Instagram'));
+        list.appendChild(mkRow('tiktok', 'TikTok'));
+        const hint = document.createElement('div'); hint.className='legend'; hint.textContent='Activa/desactiva y edita las URLs que quieras mostrar.';
+        linksBox.appendChild(list); linksBox.appendChild(hint);
+        el.appendChild(linksBox);
       } else if ((node.type||'action') === 'start') {
         // Nota para palabras clave (sin textarea)
         const note = document.createElement('div'); note.className='legend';
@@ -600,7 +644,22 @@
         flow.nodes[k].type = flow.nodes[k].type || 'action';
         if (flow.nodes[k].type==='advisor') {
           flow.nodes[k].phone = (flow.nodes[k].phone||'').trim();
-          flow.nodes[k].include_links = !!flow.nodes[k].include_links;
+          // Normalizar links
+          const links = flow.nodes[k].links;
+          const norm = {};
+          ['web','fb','ig','tiktok'].forEach(key => {
+            const it = links && links[key] ? links[key] : null;
+            if (it && (it.url||'').trim()) {
+              norm[key] = { enabled: !!it.enabled, url: (it.url||'').trim() };
+            }
+          });
+          if (Object.keys(norm).length > 0) {
+            flow.nodes[k].links = norm;
+            flow.nodes[k].include_links = Object.values(norm).some(v => v.enabled);
+          } else {
+            delete flow.nodes[k].links;
+            flow.nodes[k].include_links = !!flow.nodes[k].include_links; // mantener compatibilidad
+          }
         }
         if (flow.nodes[k].type==='start') {
           flow.nodes[k].keywords = (flow.nodes[k].keywords||'').trim();
