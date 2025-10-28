@@ -268,9 +268,15 @@
         phone.style.width = '100%'; phone.style.marginBottom = '6px';
         phone.oninput = () => { flow.nodes[id].phone = phone.value.trim(); };
         el.appendChild(phone);
-        const ta = document.createElement('textarea'); ta.value = node.text || 'Te estamos transfiriendo con una asesora humana. Un momento por favor.';
+  const ta = document.createElement('textarea'); ta.value = node.text || 'Te estamos transfiriendo con una asesora humana. Un momento por favor.';
         ta.placeholder = 'Texto opcional que se enviará'; ta.addEventListener('input', () => { flow.nodes[id].text = ta.value; });
         el.appendChild(ta);
+  // Timeout de inactividad (minutos)
+  const trow = document.createElement('div'); trow.style.display='grid'; trow.style.gridTemplateColumns='1fr 100px'; trow.style.gap='8px'; trow.style.alignItems='center'; trow.style.margin='6px 0';
+  const tlab = document.createElement('label'); tlab.textContent = 'Cerrar por inactividad (min)'; tlab.style.fontSize='13px'; tlab.style.color='#333';
+  const tnum = document.createElement('input'); tnum.type='number'; tnum.min='1'; tnum.max='720'; tnum.value = (node.timeout_min||node.human_timeout_min||15);
+  tnum.oninput = ()=>{ const v = parseInt(tnum.value||'15',10); flow.nodes[id].timeout_min = isNaN(v)?15:Math.max(1, Math.min(720, v)); };
+  trow.appendChild(tlab); trow.appendChild(tnum); el.appendChild(trow);
         // Links configurables (web y redes) con switches y URLs
         const linksBox = document.createElement('div'); linksBox.className='assets';
         const title = document.createElement('div'); title.style.fontWeight='700'; title.style.marginBottom='6px'; title.textContent='Links a mostrar mientras espera';
@@ -660,6 +666,9 @@
             delete flow.nodes[k].links;
             flow.nodes[k].include_links = !!flow.nodes[k].include_links; // mantener compatibilidad
           }
+          // Timeout por inactividad
+          const tm = parseInt(flow.nodes[k].timeout_min||flow.nodes[k].human_timeout_min||15, 10);
+          flow.nodes[k].timeout_min = isNaN(tm)?15:Math.max(1, Math.min(720, tm));
         }
         if (flow.nodes[k].type==='start') {
           flow.nodes[k].keywords = (flow.nodes[k].keywords||'').trim();

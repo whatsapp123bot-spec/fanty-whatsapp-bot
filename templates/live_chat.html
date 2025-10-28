@@ -53,6 +53,7 @@
       <div class="composer">
         <input id="input" type="text" placeholder="Escribe un mensaje..." />
         <button onclick="send()">Enviar</button>
+        <button id="btnClose" style="background:#dc3545" onclick="closeLive()" title="Cerrar chat en vivo">Cerrar</button>
       </div>
     </section>
   </div>
@@ -103,6 +104,7 @@
       msgBox.scrollTop = msgBox.scrollHeight;
       // Habilitar/deshabilitar input
       const input = document.getElementById('input'); input.disabled = !currentAllowed; input.placeholder = currentAllowed ? 'Escribe un mensaje...' : 'El usuario no solicitó chat humano';
+      document.getElementById('btnClose').disabled = !currentAllowed;
     }
 
     function updateUserStatus(on, name){
@@ -123,6 +125,19 @@
         openThread(current); // recarga conversación
       } else {
         alert(data.error || 'No se pudo enviar');
+      }
+    }
+
+    async function closeLive(){
+      if (!current) return;
+      if (!confirm('¿Cerrar chat en vivo para este usuario?')) return;
+      const r = await fetch('/internal/human/close?key='+encodeURIComponent(KEY), { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ wa_id: current }) });
+      const data = await r.json();
+      if (data && data.ok){
+        openThread(current);
+        fetchThreads();
+      } else {
+        alert(data.error || 'No se pudo cerrar');
       }
     }
 

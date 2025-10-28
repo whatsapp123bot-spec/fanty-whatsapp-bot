@@ -47,7 +47,10 @@ def init_conversations_db():
                 wa_id TEXT PRIMARY KEY,
                 name TEXT,
                 human_requested INTEGER DEFAULT 0,
-                last_message_at INTEGER DEFAULT 0
+                last_message_at INTEGER DEFAULT 0,
+                last_in_at INTEGER DEFAULT 0,
+                human_timeout_min INTEGER DEFAULT 15,
+                human_expires_at INTEGER DEFAULT 0
             )
             """
         )
@@ -64,6 +67,19 @@ def init_conversations_db():
             """
         )
         conn.commit()
+        # Asegurar columnas nuevas por si la tabla ya existía
+        try:
+            cur.execute("ALTER TABLE users ADD COLUMN last_in_at INTEGER DEFAULT 0")
+        except Exception:
+            pass
+        try:
+            cur.execute("ALTER TABLE users ADD COLUMN human_timeout_min INTEGER DEFAULT 15")
+        except Exception:
+            pass
+        try:
+            cur.execute("ALTER TABLE users ADD COLUMN human_expires_at INTEGER DEFAULT 0")
+        except Exception:
+            pass
         conn.close()
     except Exception as e:
         print('⚠️ No se pudo inicializar conversations.db:', e)
@@ -87,11 +103,11 @@ def save_incoming_message(wa_id: str, body: str, mtype: str = 'text', name: str 
         exists = cur.fetchone()
         if exists:
             if name:
-                cur.execute("UPDATE users SET name=?, last_message_at=? WHERE wa_id=?", (name, ts, wa_id))
+                cur.execute("UPDATE users SET name=?, last_message_at=?, last_in_at=? WHERE wa_id=?", (name, ts, ts, wa_id))
             else:
-                cur.execute("UPDATE users SET last_message_at=? WHERE wa_id=?", (ts, wa_id))
+                cur.execute("UPDATE users SET last_message_at=?, last_in_at=? WHERE wa_id=?", (ts, ts, wa_id))
         else:
-            cur.execute("INSERT INTO users (wa_id, name, last_message_at) VALUES (?,?,?)", (wa_id, name or '', ts))
+            cur.execute("INSERT INTO users (wa_id, name, last_message_at, last_in_at) VALUES (?,?,?,?)", (wa_id, name or '', ts, ts))
         cur.execute("INSERT INTO messages (wa_id, direction, mtype, body, ts) VALUES (?,?,?,?,?)", (wa_id, 'in', mtype, body or '', ts))
         conn.commit()
         conn.close()
@@ -113,6 +129,27 @@ def set_human_requested(wa_id: str, value: bool):
         _db_execute("UPDATE users SET human_requested=? WHERE wa_id=?", (1 if value else 0, wa_id))
     except Exception as e:
         print('⚠️ No se pudo actualizar human_requested:', e)
+
+
+def set_human_on(wa_id: str, timeout_min: int):
+    try:
+        now = int(time.time())
+        expires = now + max(1, int(timeout_min or 15)) * 60
+        conn = sqlite3.connect(CONV_DB_PATH)
+        cur = conn.cursor()
+        cur.execute("UPDATE users SET human_requested=1, human_timeout_min=?, human_expires_at=? WHERE wa_id=?", (int(timeout_min or 15), expires, wa_id))
+        if cur.rowcount == 0:
+            cur.execute("INSERT INTO users (wa_id, human_requested, human_timeout_min, human_expires_at, last_message_at) VALUES (?,?,?,?,?)", (wa_id, 1, int(timeout_min or 15), expires, now))
+        conn.commit(); conn.close()
+    except Exception as e:
+        print('⚠️ No se pudo activar chat humano:', e)
+
+
+def set_human_off(wa_id: str):
+    try:
+        _db_execute("UPDATE users SET human_requested=0, human_expires_at=0 WHERE wa_id=?", (wa_id,))
+    except Exception as e:
+        print('⚠️ No se pudo desactivar chat humano:', e)
 
 
 def list_conversations(limit: int = 100, human_only: bool = False):
@@ -223,9 +260,10 @@ def send_flow_node(to: str, node_id: str):
                 lines.append(f"• TikTok: {TIKTOK_URL}")
         lines.append(f"\nChatear: {link}")
         body_text = "\n".join(lines)
-        # Habilitar chat humano para este usuario
+        # Habilitar chat humano para este usuario con timeout configurable
         try:
-            set_human_requested(to, True)
+            timeout_min = int(node.get('timeout_min') or node.get('human_timeout_min') or 15)
+            set_human_on(to, timeout_min)
         except Exception:
             pass
         payload = {
@@ -363,6 +401,19 @@ def api_send_message():
     return jsonify({'ok': True})
 
 
+@app.post('/internal/human/close')
+def api_human_close():
+    key = request.args.get('key')
+    if key != VERIFY_TOKEN:
+        return jsonify({'error': 'forbidden'}), 403
+    data = request.get_json(silent=True) or {}
+    wa_id = data.get('wa_id') or request.form.get('wa_id')
+    if not wa_id:
+        return jsonify({'error': 'faltan campos'}), 400
+    set_human_off(wa_id)
+    return jsonify({'ok': True})
+
+
 @app.route('/chat')
 def chat():
     # Simulador tipo WhatsApp
@@ -418,6 +469,30 @@ def webhook():
                                     save_incoming_message(from_wa, text or '', 'text', name=name)
                                 except Exception:
                                     pass
+                                # Control de chat humano (pausar flujo)
+                                try:
+                                    conn = sqlite3.connect(CONV_DB_PATH); cur = conn.cursor()
+                                    cur.execute("SELECT human_requested, human_timeout_min, human_expires_at FROM users WHERE wa_id=?", (from_wa,))
+                                    row = cur.fetchone(); conn.close()
+                                    if row and (row[0] or 0) == 1:
+                                        now = int(time.time())
+                                        # Frase para cerrar manualmente desde el cliente
+                                        close_phrase = 'cerrar chat en vivo'
+                                        if close_phrase in low:
+                                            set_human_off(from_wa)
+                                            send_whatsapp_text(from_wa, '✅ Chat en vivo cerrado. El asistente continuará atendiéndote.')
+                                        else:
+                                            # Si venció, desactivar para permitir flujo; si no, extender ventana y no responder
+                                            timeout_min = int(row[1] or 15)
+                                            expires = int(row[2] or 0)
+                                            if expires and now > expires:
+                                                set_human_off(from_wa)
+                                            else:
+                                                # Extender por actividad del cliente
+                                                set_human_on(from_wa, timeout_min)
+                                                return 'ok', 200
+                                except Exception:
+                                    pass
                                 greetings = ("hola", "holi", "buenas", "buenos días", "buenas tardes", "buenas noches")
                                 flow_nodes = (FLOW_CONFIG or {}).get('nodes') or {}
                                 flow_enabled = (FLOW_CONFIG or {}).get('enabled', True)
@@ -465,6 +540,15 @@ def webhook():
                                 elif itype == 'list_reply':
                                     reply_id = interactive.get('list_reply', {}).get('id')
                                 print("🔘 INTERACTIVE ID:", reply_id)
+                                # Si hay chat humano activo, ignorar flujo para interactivos también
+                                try:
+                                    conn = sqlite3.connect(CONV_DB_PATH); cur = conn.cursor()
+                                    cur.execute("SELECT human_requested FROM users WHERE wa_id=?", (from_wa,))
+                                    row = cur.fetchone(); conn.close()
+                                    if row and (row[0] or 0) == 1:
+                                        return 'ok', 200
+                                except Exception:
+                                    pass
                                 # Guardar entrante de tipo interactivo (como texto con el título si existe)
                                 try:
                                     title = ''
