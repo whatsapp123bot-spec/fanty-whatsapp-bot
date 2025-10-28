@@ -1,5 +1,6 @@
 import os
 import requests
+import json
 from flask import Flask, request, render_template, jsonify, redirect, url_for, flash
 from werkzeug.utils import secure_filename
 
@@ -41,6 +42,10 @@ def webhook():
     # POST
     data = request.get_json(silent=True) or {}
     try:
+        print('Webhook payload:', json.dumps(data)[:2000])
+    except Exception:
+        pass
+    try:
         if 'entry' in data:
             for entry in data.get('entry', []):
                 for change in entry.get('changes', []):
@@ -56,6 +61,25 @@ def webhook():
         # No romper el webhook ante payloads inesperados
         print('Error procesando webhook:', e)
     return 'ok', 200
+
+
+@app.route('/internal/subscribe')
+def internal_subscribe():
+    """Suscribe el PHONE_NUMBER_ID a la app para recibir webhooks (solo dev).
+    Protección simple con VERIFY_TOKEN como clave.
+    """
+    key = request.args.get('key')
+    if key != VERIFY_TOKEN:
+        return 'Forbidden', 403
+    if not WHATSAPP_TOKEN or not PHONE_NUMBER_ID:
+        return 'Faltan WHATSAPP_TOKEN o PHONE_NUMBER_ID', 500
+    url = f"https://graph.facebook.com/v19.0/{PHONE_NUMBER_ID}/subscribed_apps"
+    headers = {"Authorization": f"Bearer {WHATSAPP_TOKEN}"}
+    try:
+        resp = requests.post(url, headers=headers, timeout=10)
+        return f"subscribe status: {resp.status_code} body: {resp.text}", resp.status_code
+    except Exception as e:
+        return f"error: {e}", 500
 
 
 def send_whatsapp_text(to: str, body: str) -> None:
