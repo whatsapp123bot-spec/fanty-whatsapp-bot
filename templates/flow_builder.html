@@ -149,8 +149,36 @@
     }
 
     function ensureDefaults(){
-      flow.start_node = flow.start_node || Object.keys(flow.nodes)[0] || null;
       if (!flow.nodes) flow.nodes = {};
+      // Si no hay nodos, crear flujo base: inicio -> welcome -> categorias
+      if (Object.keys(flow.nodes).length === 0) {
+        flow.nodes = {
+          'start': {
+            type: 'start',
+            keywords: 'hola, holi, buenas',
+            next: 'welcome',
+            pos: { x: 40, y: 40 }
+          },
+          'welcome': {
+            type: 'action',
+            text: '👋 Hola, soy Fanty, tu asistente virtual. ¿Qué deseas hacer hoy?',
+            buttons: [ { title: '📦 Ver catálogo', next: 'categorias' } ],
+            pos: { x: 420, y: 40 }
+          },
+          'categorias': {
+            type: 'action',
+            text: 'Elige una categoría:',
+            buttons: [
+              { title: '🔥 Disfraz Sexy', id: 'CATALOGO_DISFRAZ' },
+              { title: '👙 Lencería', id: 'CATALOGO_LENCERIA' },
+              { title: '🧦 Mallas', id: 'CATALOGO_MALLAS' }
+            ],
+            pos: { x: 800, y: 40 }
+          }
+        };
+        flow.start_node = 'start';
+      }
+      flow.start_node = flow.start_node || Object.keys(flow.nodes)[0] || null;
       for (const k of Object.keys(flow.nodes)) {
         flow.nodes[k].text = flow.nodes[k].text || '';
         flow.nodes[k].buttons = (flow.nodes[k].buttons || []).slice(0, FLOW_LIMIT);
@@ -233,6 +261,11 @@
         const ta = document.createElement('textarea'); ta.value = node.text || 'Te contacto con una asesora por WhatsApp.';
         ta.placeholder = 'Texto opcional que se enviará'; ta.addEventListener('input', () => { flow.nodes[id].text = ta.value; });
         el.appendChild(ta);
+      } else if ((node.type||'action') === 'start') {
+        // Nota para palabras clave (sin textarea)
+        const note = document.createElement('div'); note.className='legend';
+        note.textContent = 'Escriba las palabras clave. Este nodo inicia el flujo.';
+        el.appendChild(note);
       } else {
         const ta = document.createElement('textarea'); ta.value = node.text || '';
         ta.placeholder = 'Texto del mensaje'; ta.addEventListener('input', () => { flow.nodes[id].text = ta.value; });
@@ -523,6 +556,8 @@
         if (flow.nodes[k].type==='start') {
           flow.nodes[k].keywords = (flow.nodes[k].keywords||'').trim();
           if (flow.nodes[k].next) flow.nodes[k].next = String(flow.nodes[k].next);
+          // El nodo inicio no usa texto; limpiarlo si existe
+          if ('text' in flow.nodes[k]) delete flow.nodes[k].text;
         }
         if (!Array.isArray(flow.nodes[k].assets)) delete flow.nodes[k].assets; // solo guardar si existe bien formada
       }
