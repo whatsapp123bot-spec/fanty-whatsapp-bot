@@ -81,7 +81,11 @@ def send_flow_node(to: str, node_id: str):
         }
         return _post_wa(payload)
 
-    # action / start: texto + botones
+    # start: si tiene next, redirigir directamente al siguiente nodo
+    if ntype == 'start' and node.get('next'):
+        return send_flow_node(to, node.get('next'))
+
+    # action / (start sin next): texto + botones
     raw_buttons = (node.get('buttons') or [])[:3]
     buttons = []
     for b in raw_buttons:

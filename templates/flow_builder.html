@@ -44,6 +44,8 @@
   .connector:hover { background:#e7dbff; }
   .inlet { width:10px; height:10px; border-radius:50%; border:2px solid #8a8aa8; background:#fff; display:inline-block; margin-right:6px; }
   .preview { stroke:#7444a8; stroke-width:2; fill:none; stroke-dasharray:4 4; }
+  .start-connector { position:absolute; bottom:10px; right:10px; width:14px; height:14px; border-radius:50%; border:2px solid #7444a8; background:#fff; }
+  .start-connector:hover { background:#e7dbff; }
     /* Overlay para elegir tipo de nodo */
     .overlay { position:fixed; inset:0; background:rgba(0,0,0,.35); display:none; align-items:center; justify-content:center; z-index:9999; }
     .overlay .panel { background:#fff; border-radius:12px; padding:16px; width:340px; box-shadow:0 8px 28px rgba(0,0,0,.25); }
@@ -217,9 +219,14 @@
         const kw = document.createElement('input'); kw.placeholder='Palabras clave separadas por coma (hola, holi, buenas)'; kw.value = (node.keywords||'');
         kw.style.width = '100%'; kw.oninput = () => { flow.nodes[id].keywords = kw.value; };
         el.appendChild(kw);
+        // Conector único para salida del nodo de inicio
+        const sc = document.createElement('span'); sc.className='start-connector'; sc.title='Arrastra para conectar el inicio con otro nodo';
+        sc.dataset.startConnector = id;
+        sc.addEventListener('mousedown', (e) => startConnect(e, id, null, sc));
+        el.appendChild(sc);
       }
 
-      if ((node.type||'action') !== 'advisor') {
+      if ((node.type||'action') !== 'advisor' && (node.type||'action') !== 'start') {
         const btns = document.createElement('div'); btns.className='btns';
         (node.buttons||[]).forEach((b, idx) => btns.appendChild(renderButtonRow(id, b, idx)));
         const add = document.createElement('button'); add.className='addRow'; add.textContent='+ Añadir botón';
@@ -330,6 +337,12 @@
           inletPos[card.dataset.nodeId] = { x: r.left - host.left + r.width/2, y: r.top - host.top + r.height/2 };
         }
       });
+      // Posición del conector de inicio por nodo
+      const startConnPos = {};
+      document.querySelectorAll('[data-start-connector]').forEach(el => {
+        const r = el.getBoundingClientRect();
+        startConnPos[el.dataset.startConnector] = { x: r.left - host.left + r.width/2, y: r.top - host.top + r.height/2 };
+      });
       // Pintar líneas next
       Object.entries(flow.nodes).forEach(([id, node]) => {
         (node.buttons||[]).forEach((b, idx) => {
@@ -351,11 +364,20 @@
           path.setAttribute('marker-end','url(#arrow)');
           linesSvg.appendChild(path);
         });
+        // Edge desde nodo start (si existe next)
+        if ((node.type||'action') === 'start' && node.next && startConnPos[id] && inletPos[node.next]) {
+          const p1 = startConnPos[id];
+          const p2 = inletPos[node.next];
+          const x1 = p1.x, y1 = p1.y; const x2 = p2.x, y2 = p2.y;
+          const path = document.createElementNS('http://www.w3.org/2000/svg','path');
+          const mx = (x1 + x2)/2; const d = `M ${x1} ${y1} C ${mx} ${y1}, ${mx} ${y2}, ${x2} ${y2}`;
+          path.setAttribute('d', d); path.setAttribute('class','edge'); path.setAttribute('fill','none'); path.setAttribute('stroke','#8a8aa8'); path.setAttribute('stroke-width','2'); path.setAttribute('marker-end','url(#arrow)'); linesSvg.appendChild(path);
+        }
       });
     }
 
     // Conexión visual (drag desde el conector a otro nodo)
-    let connecting = null; // { nodeId, idx, x0, y0, preview }
+  let connecting = null; // { nodeId, idx|null, x0, y0, preview }
     function startConnect(e, nodeId, idx, connectorEl){
       e.preventDefault();
       const rect = connectorEl.getBoundingClientRect();
@@ -365,7 +387,7 @@
       const p = document.createElementNS('http://www.w3.org/2000/svg','path');
       p.setAttribute('class','preview');
       linesSvg.appendChild(p);
-      connecting = { nodeId, idx, x0, y0, preview: p };
+  connecting = { nodeId, idx, x0, y0, preview: p };
       document.addEventListener('mousemove', onConnectMove);
       document.addEventListener('mouseup', endConnect);
     }
@@ -387,9 +409,14 @@
       while (card && !card.classList?.contains('node')) card = card.parentElement;
       if (card && card.dataset.nodeId) {
         const target = card.dataset.nodeId;
-        const btns = flow.nodes[connecting.nodeId].buttons || [];
-        btns[connecting.idx] = { title: btns[connecting.idx]?.title || 'Opción', next: target };
-        flow.nodes[connecting.nodeId].buttons = btns;
+        if (connecting.idx === null) {
+          // Conexión desde nodo de inicio
+          flow.nodes[connecting.nodeId].next = target;
+        } else {
+          const btns = flow.nodes[connecting.nodeId].buttons || [];
+          btns[connecting.idx] = { title: btns[connecting.idx]?.title || 'Opción', next: target };
+          flow.nodes[connecting.nodeId].buttons = btns;
+        }
       }
       // limpiar preview
       if (connecting.preview && connecting.preview.parentNode) connecting.preview.parentNode.removeChild(connecting.preview);
@@ -441,7 +468,10 @@
         // Asegurar type/phone/keywords persisten
         flow.nodes[k].type = flow.nodes[k].type || 'action';
         if (flow.nodes[k].type==='advisor') flow.nodes[k].phone = (flow.nodes[k].phone||'').trim();
-        if (flow.nodes[k].type==='start') flow.nodes[k].keywords = (flow.nodes[k].keywords||'').trim();
+        if (flow.nodes[k].type==='start') {
+          flow.nodes[k].keywords = (flow.nodes[k].keywords||'').trim();
+          if (flow.nodes[k].next) flow.nodes[k].next = String(flow.nodes[k].next);
+        }
       }
       const payload = JSON.stringify(flow, null, 2);
       document.getElementById('contentField').value = payload;
