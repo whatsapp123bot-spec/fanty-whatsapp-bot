@@ -39,12 +39,9 @@ def webhook():
             return challenge
         return 'Token incorrecto', 403
 
-    # POST
+    # POST (cuando llega un mensaje)
     data = request.get_json(silent=True) or {}
-    try:
-        print('Webhook payload:', json.dumps(data)[:2000])
-    except Exception:
-        pass
+    print("📩 DATA RECIBIDA:", data)
     try:
         if 'entry' in data:
             for entry in data.get('entry', []):
@@ -53,13 +50,17 @@ def webhook():
                     messages = value.get('messages')
                     if messages:
                         message = messages[0]
+                        print("💬 MENSAJE DETECTADO:", message)
                         from_wa = message.get('from')
                         text = message.get('text', {}).get('body', '')
+                        print(f"📱 DE: {from_wa} | TEXTO: {text}")
                         if from_wa and text:
                             send_whatsapp_text(from_wa, f"👋 Hola, soy Fanty. Recibí tu mensaje: {text}")
     except Exception as e:
         # No romper el webhook ante payloads inesperados
-        print('Error procesando webhook:', e)
+        import traceback
+        print("❌ Error procesando webhook:")
+        traceback.print_exc()
     return 'ok', 200
 
 
