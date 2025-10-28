@@ -34,10 +34,7 @@ whatsapp-bot/
 │  ├─ live_chat.html  # Panel de chat en vivo
 │  └─ flow_builder.html # Editor visual del flujo
 ├─ static/
-│  └─ catalogos/      # (opcional, legado)
-│     ├─ disfraz.pdf
-│     ├─ lenceria.pdf
-│     └─ mallas.pdf
+│  └─ uploads/        # Cargados vía /internal/upload desde el builder
 ├─ requirements.txt
 ├─ .gitignore
 └─ venv/                # (local)
@@ -119,4 +116,4 @@ git push -u origin main
 
 Notas:
 - En local usa `python app.py`. En Render, Gunicorn sirve la app con `app:app`.
-- La gestión de assets se realiza desde el editor visual; la ruta `/admin` y `static/catalogos/` quedan como soporte legado opcional.
+- La gestión de assets se realiza desde el editor visual y la API `/internal/upload`; ya no existe `/admin` ni `static/catalogos/`.

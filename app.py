@@ -10,12 +10,9 @@ app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'dev-secret')
 
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
-CATALOG_DIR = os.path.join(BASE_DIR, 'static', 'catalogos')
-os.makedirs(CATALOG_DIR, exist_ok=True)
 UPLOAD_DIR = os.path.join(BASE_DIR, 'static', 'uploads')
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
-ALLOWED_EXTENSIONS = {'.pdf'}
 ALLOWED_UPLOADS = {'.pdf', '.jpg', '.jpeg', '.png'}
 
 # Variables de entorno para WhatsApp Cloud API
@@ -1050,81 +1047,144 @@ def send_whatsapp_buttons_shipping(to: str):
     return _post_wa(payload)
 
 
+def _build_preview_response_for_node(node_id: str):
+    nodes = (FLOW_CONFIG or {}).get('nodes') or {}
+    node = nodes.get(node_id)
+    if not node:
+        return {'response': '⚠️ Paso no encontrado en el flujo.'}
+    ntype = (node.get('type') or 'action').lower()
+    # Redirigir automáticamente si es start con next
+    if ntype == 'start' and node.get('next'):
+        return _build_preview_response_for_node(node.get('next'))
+
+    # Texto + assets (HTML)
+    text = (node.get('text') or '').strip()
+    parts = []
+    if text:
+        parts.append(text.replace('\n', '<br>'))
+    for asset in (node.get('assets') or [])[:5]:
+        atype = (asset.get('type') or '').lower()
+        url = asset.get('url') or ''
+        name = asset.get('name') or ''
+        if not url:
+            continue
+        if atype == 'image':
+            parts.append(f'<div><img src="{url}" alt="imagen" style="max-width:100%" /></div>')
+        else:
+            label = name or 'archivo'
+            parts.append(f'📄 <a href="{url}" target="_blank">{label}</a>')
+
+    options = []
+    if ntype == 'advisor':
+        raw_phone = (node.get('phone') or '').strip()
+        digits = ''.join(ch for ch in raw_phone if ch.isdigit() or ch == '+')
+        link = f"https://wa.me/{digits.lstrip('+')}" if digits else WHATSAPP_ADVISOR_URL
+        lines = []
+        if not text:
+            lines.append("Te estamos transfiriendo con una asesora humana. Un momento por favor.")
+        links_cfg = node.get('links') or {}
+        any_enabled = False
+        if isinstance(links_cfg, dict):
+            for k in ('web','fb','ig','tiktok'):
+                item = links_cfg.get(k) or {}
+                if item.get('enabled') and (item.get('url') or '').strip():
+                    any_enabled = True; break
+        if any_enabled or node.get('include_links', True):
+            lines.append("<br>Mientras tanto, puedes revisar:")
+            def _add_line(label, key, url_val):
+                if url_val:
+                    lines.append(f"• {label}: <a href=\"{url_val}\" target=\"_blank\">{url_val}</a>")
+            if any_enabled:
+                def _url(k):
+                    it = links_cfg.get(k) or {}
+                    return it.get('url').strip() if (it.get('enabled') and (it.get('url') or '').strip()) else ''
+                _add_line('Web','web', _url('web'))
+                _add_line('Facebook','fb', _url('fb'))
+                _add_line('Instagram','ig', _url('ig'))
+                _add_line('TikTok','tiktok', _url('tiktok'))
+            else:
+                _add_line('Web','web', STORE_URL)
+                _add_line('Facebook','fb', FB_URL)
+                _add_line('Instagram','ig', IG_URL)
+                _add_line('TikTok','tiktok', TIKTOK_URL)
+        lines.append(f"<br>Chatear: <a href=\"{link}\" target=\"_blank\">{link}</a>")
+        parts.append('<br>'.join(lines))
+        start_id = (FLOW_CONFIG or {}).get('start_node')
+        if start_id:
+            options.append({'title': '🔙 Menú principal', 'payload': f'FLOW:{start_id}'})
+        return {'response_html': '<br>'.join(parts) if parts else 'Asesor humano', 'options': options}
+
+    # Botones
+    raw_buttons = (node.get('buttons') or [])[:3]
+    for b in raw_buttons:
+        title = b.get('title') or 'Opción'
+        if b.get('next'):
+            options.append({'title': title, 'payload': f"FLOW:{b['next']}"})
+        elif b.get('id'):
+            options.append({'title': title, 'payload': b.get('id')})
+    if not options and ntype == 'action' and node.get('next'):
+        options.append({'title': '➡️ Siguiente', 'payload': f"FLOW:{node.get('next')}"})
+
+    resp = {}
+    if parts:
+        resp['response_html'] = '<br>'.join(parts)
+    else:
+        resp['response'] = text or ' '
+    if options:
+        resp['options'] = options
+    return resp
+
+
 @app.route('/send_message', methods=['POST'])
 def send_message():
-    """Simula la respuesta del bot para la vista previa del chat."""
+    """Vista previa conectada al flow.json (sin usar catálogos antiguos)."""
     user_message = request.form.get('message', '')
     payload = request.form.get('payload')
 
-    # Si llega un payload de botón, priorizarlo
     if payload:
-        if payload == 'CATALOGO_DISFRAZ':
-            path = os.path.join(CATALOG_DIR, 'disfraz.pdf')
-            if os.path.exists(path):
-                link = url_for('static', filename='catalogos/disfraz.pdf')
-                return jsonify({
-                    'response': '🔥 Catálogo Disfraz Sexy',
-                    'response_html': f'🔥 Catálogo Disfraz Sexy<br>👉 <a href="{link}" target="_blank">📄 Abrir catálogo</a>'
-                })
-            else:
-                return jsonify({'response': '⚠️ Aún no hay catálogo de Disfraz Sexy cargado.'})
-        if payload == 'CATALOGO_LENCERIA':
-            path = os.path.join(CATALOG_DIR, 'lenceria.pdf')
-            if os.path.exists(path):
-                link = url_for('static', filename='catalogos/lenceria.pdf')
-                return jsonify({
-                    'response': '👙 Catálogo Lencería',
-                    'response_html': f'👙 Catálogo Lencería<br>👉 <a href="{link}" target="_blank">📄 Abrir catálogo</a>'
-                })
-            else:
-                return jsonify({'response': '⚠️ Aún no hay catálogo de Lencería cargado.'})
-        if payload == 'CATALOGO_MALLAS':
-            path = os.path.join(CATALOG_DIR, 'mallas.pdf')
-            if os.path.exists(path):
-                link = url_for('static', filename='catalogos/mallas.pdf')
-                return jsonify({
-                    'response': '🧦 Catálogo Mallas',
-                    'response_html': f'🧦 Catálogo Mallas<br>👉 <a href="{link}" target="_blank">📄 Abrir catálogo</a>'
-                })
-            else:
-                return jsonify({'response': '⚠️ Aún no hay catálogo de Mallas cargado.'})
-        # Payload desconocido
-        return jsonify({'response': '❓ Opción no reconocida.'}), 400
+        if isinstance(payload, str) and payload.startswith('FLOW:'):
+            next_id = payload.split(':', 1)[1]
+            return jsonify(_build_preview_response_for_node(next_id))
+        if payload == 'MENU_PRINCIPAL' and (FLOW_CONFIG or {}).get('start_node'):
+            return jsonify(_build_preview_response_for_node(FLOW_CONFIG.get('start_node')))
+        return jsonify({'response': 'ℹ️ Esta acción no se simula en vista previa.'})
 
-    # Sin payload: procesar texto libre
-    text = (user_message or '').strip().lower()
-    if not text:
-        return jsonify({'response': '⚠️ No recibí ningún mensaje.'}), 400
+    low = (user_message or '').strip().lower()
+    if not low:
+        return jsonify({'response': '⚠️ Escribe un mensaje para empezar.'}), 400
 
-    greetings = ("hola", "holi", "buenas", "buenos días", "buenas tardes", "buenas noches")
-    if any(g in text for g in greetings):
-        return jsonify({
-            'response': '� Hola, soy Fanty, asistente virtual de Fantasía Íntima. ¿En cuál de nuestros catálogos estás interesad@?',
-            'options': [
-                { 'title': '🔥 Disfraz Sexy', 'payload': 'CATALOGO_DISFRAZ' },
-                { 'title': '👙 Lencería', 'payload': 'CATALOGO_LENCERIA' },
-                { 'title': '🧦 Mallas', 'payload': 'CATALOGO_MALLAS' }
-            ]
-        })
-
-    if 'disfraz' in text:
-        return jsonify({'response': '🔥 Catálogo Disfraz Sexy (simulación). PDF: https://ejemplo.com/catalogos/disfraz.pdf'})
-    if 'lencer' in text:  # captura lencería/lenceria
-        return jsonify({'response': '👙 Catálogo Lencería (simulación). PDF: https://ejemplo.com/catalogos/lenceria.pdf'})
-    if 'malla' in text:
-        return jsonify({'response': '🧦 Catálogo Mallas (simulación). PDF: https://ejemplo.com/catalogos/mallas.pdf'})
-
-    if "pdf" in text:
-        return jsonify({'response': '📄 Te enviaría un PDF (simulación).'})
-    if "imagen" in text or "foto" in text:
-        return jsonify({'response': '🖼️ Aquí te mostraría una imagen (simulación).'})
-
-    return jsonify({'response': '🤖 No entendí tu mensaje, pero pronto aprenderé más.'})
-
-
-def _allowed_pdf(filename: str) -> bool:
-    _, ext = os.path.splitext(filename.lower())
-    return ext in ALLOWED_EXTENSIONS
+    flow_nodes = (FLOW_CONFIG or {}).get('nodes') or {}
+    flow_enabled = (FLOW_CONFIG or {}).get('enabled', True)
+    if flow_enabled and flow_nodes:
+        try:
+            for nid, ndef in flow_nodes.items():
+                if (ndef.get('type') or 'action').lower() != 'start':
+                    continue
+                ex_raw = (ndef.get('exact') or '')
+                if ex_raw:
+                    parts = []
+                    for line in ex_raw.split('\n'):
+                        parts.extend([p.strip().lower() for p in line.split(',') if p.strip()])
+                    if any(p and p == low for p in parts):
+                        return jsonify(_build_preview_response_for_node(nid))
+        except Exception:
+            pass
+        try:
+            for nid, ndef in flow_nodes.items():
+                if (ndef.get('type') or 'action').lower() != 'start':
+                    continue
+                kws_raw = (ndef.get('keywords') or '')
+                if not kws_raw:
+                    continue
+                kws = [k.strip().lower() for k in kws_raw.split(',') if k.strip()]
+                if any(k and k in low for k in kws):
+                    return jsonify(_build_preview_response_for_node(nid))
+        except Exception:
+            pass
+        greetings = ("hola", "holi", "buenas", "buenos días", "buenas tardes", "buenas noches")
+        if (FLOW_CONFIG or {}).get('start_node') and any(g in low for g in greetings):
+            return jsonify(_build_preview_response_for_node(FLOW_CONFIG.get('start_node')))
+    return jsonify({'response': '🤖 No hay un match en el flujo para tu mensaje.'})
 
 
 def _allowed_upload(filename: str) -> bool:
@@ -1132,48 +1192,7 @@ def _allowed_upload(filename: str) -> bool:
     return ext in ALLOWED_UPLOADS
 
 
-@app.route('/admin', methods=['GET', 'POST'])
-def admin_upload():
-    """Panel para subir catálogos PDF por categoría."""
-    saved = {}
-    error = None
-    if request.method == 'POST':
-        try:
-            files = {
-                'disfraz': request.files.get('disfraz'),
-                'lenceria': request.files.get('lenceria'),
-                'mallas': request.files.get('mallas'),
-            }
-            for key, f in files.items():
-                if not f or f.filename == '':
-                    continue
-                if not _allowed_pdf(f.filename):
-                    error = f'Archivo inválido para {key}. Solo se permiten PDF.'
-                    continue
-                filename = key + '.pdf'
-                # secure_filename por seguridad, aunque forzamos nombre final
-                _ = secure_filename(f.filename)
-                dest = os.path.join(CATALOG_DIR, filename)
-                f.save(dest)
-                saved[key] = filename
-            if saved and not error:
-                flash('✅ Catálogos guardados correctamente: ' + ', '.join(saved.keys()))
-            elif error and not saved:
-                flash('⚠️ ' + error)
-            else:
-                flash('ℹ️ No se subió ningún archivo nuevo.')
-            return redirect(url_for('admin_upload'))
-        except Exception as e:
-            flash('❌ Error al subir archivos: ' + str(e))
-            return redirect(url_for('admin_upload'))
-
-    # Estado actual (existencia de archivos)
-    exists = {
-        'disfraz': os.path.exists(os.path.join(CATALOG_DIR, 'disfraz.pdf')),
-        'lenceria': os.path.exists(os.path.join(CATALOG_DIR, 'lenceria.pdf')),
-        'mallas': os.path.exists(os.path.join(CATALOG_DIR, 'mallas.pdf')),
-    }
-    return render_template('upload.html', exists=exists)
+## Ruta /admin eliminada: la gestión de assets se hace vía /internal/upload desde el editor visual.
 
 
 @app.route('/internal/health')
