@@ -83,6 +83,7 @@
   <span id="statusChip" class="status-chip off">Inactivo</span>
     </div>
     <div class="actions">
+      <button class="btn reload" style="background:#7444a8" onclick="openPreview()">👀 Vista previa</button>
       <button class="btn reload" onclick="reloadFromServer()">↻ Recargar</button>
       <button class="btn save" onclick="saveFlow()">💾 Guardar</button>
     </div>
@@ -699,6 +700,11 @@
 
     function reloadFromServer(){
       window.location.reload();
+    }
+
+    function openPreview(){
+      // Abre el simulador tipo WhatsApp en una pestaña nueva
+      window.open('/chat','_blank');
     }
 
     function showToast(msg, isError){

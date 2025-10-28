@@ -4,18 +4,17 @@ Simulador tipo WhatsApp en Python + Flask donde el asistente “Fanty” respond
 
 ## Objetivo
 
-- Vista previa estilo WhatsApp en `http://127.0.0.1:5000`.
-- Subir PDFs de catálogos desde un mini panel de administración.
-- Responder en el chat con botones y, al elegir una opción, mostrar el PDF subido.
-- Endpoint `/webhook` listo para futura integración con WhatsApp Cloud API.
+- Editor visual de flujo con vista previa integrada (abre `/chat` desde el propio builder).
+- Subir y gestionar assets desde el editor visual (imágenes, PDFs, etc.).
+- Responder en el chat con botones o encadenar nodos (conector de salida) y enviar archivos.
+- Endpoint `/webhook` listo para la integración con WhatsApp Cloud API.
 
 ## Funciones
 
-- Vista previa del chat:
-   - Escribe “hola/holi/buenas” para ver botones: 🔥 Disfraz Sexy, 👙 Lencería, 🧦 Mallas.
-   - Al hacer clic, el bot envía el enlace al PDF correspondiente (si existe).
-- Agregar catálogos:
-   - Panel para subir PDFs por categoría: se guardan en `static/catalogos/` con nombres fijos.
+- Builder visual con flechas y zoom (Ctrl + rueda), guardado asíncrono y “Vista previa” para probar el flujo.
+- Inicio por palabras clave o por frases exactas (para links), y nodo de asesor con pausa de flujo y enlaces sociales.
+- Chat en vivo para responder manualmente cuando el cliente pida hablar con humano.
+- Envío de multimedia (imágenes/PDFs) desde los nodos de acción.
 
 ## Tecnologías
 
@@ -30,11 +29,12 @@ Simulador tipo WhatsApp en Python + Flask donde el asistente “Fanty” respond
 whatsapp-bot/
 ├─ app.py
 ├─ templates/
-│  ├─ index.html      # Panel principal: Vista previa y Agregar catálogos
-│  ├─ chat.html       # Simulación tipo WhatsApp
-│  └─ upload.html     # Subida de PDFs
+│  ├─ index.html      # Panel principal con accesos al editor y chat en vivo
+│  ├─ chat.html       # Simulación tipo WhatsApp (vista previa)
+│  ├─ live_chat.html  # Panel de chat en vivo
+│  └─ flow_builder.html # Editor visual del flujo
 ├─ static/
-│  └─ catalogos/
+│  └─ catalogos/      # (opcional, legado)
 │     ├─ disfraz.pdf
 │     ├─ lenceria.pdf
 │     └─ mallas.pdf
@@ -60,9 +60,8 @@ python app.py
 
 Abre en el navegador: http://127.0.0.1:5000
 
-- Panel → botones: “Vista previa del chat” y “Agregar catálogos”.
-- En “Agregar catálogos”, sube tus PDFs (se guardan como `disfraz.pdf`, `lenceria.pdf`, `mallas.pdf`).
-- En “Vista previa del chat”, escribe “hola” y pulsa un botón para ver el PDF.
+- Desde el panel abre el Editor visual (🔧) con tu clave (`VERIFY_TOKEN`).
+- En el editor visual usa “👀 Vista previa” para abrir `/chat` y probar el flujo (escribe “hola/holi”).
 
 ## Exponer a Internet (opcional)
 
@@ -115,9 +114,9 @@ git push -u origin main
    - (Si usas `render.yaml`, Render lo detectará y rellenará esto automáticamente.)
 
 4) Una vez desplegado, Render te dará una URL pública HTTPS. Úsala para:
-   - Probar el panel (`/`), el chat (`/chat`) y el admin (`/admin`).
+   - Probar el panel (`/`), el chat (`/chat`) y el editor visual (`/flow/builder?key=...`).
    - Configurar el Webhook en WhatsApp Cloud API: `https://<tu-dominio-render>/webhook`.
 
 Notas:
 - En local usa `python app.py`. En Render, Gunicorn sirve la app con `app:app`.
-- Sube tus PDFs desde `/admin` en producción para que estén disponibles en `static/catalogos/`.
+- La gestión de assets se realiza desde el editor visual; la ruta `/admin` y `static/catalogos/` quedan como soporte legado opcional.
