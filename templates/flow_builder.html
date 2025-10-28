@@ -17,6 +17,7 @@
     .btn.reload { background: var(--primary); }
   .btn.add { background: #7444a8; }
     .btn.del { background: var(--red); }
+  /* status chip eliminado (ya no se usa) */
     .wrap { display:grid; grid-template-columns: 260px 1fr; gap:12px; padding: 12px; height: calc(100vh - 60px); }
     .sidebar { background: var(--card); border-radius:12px; padding:10px; overflow:auto; box-shadow: 0 6px 16px rgba(0,0,0,.06); }
     .sidebar h3 { margin:6px 6px 10px; }
@@ -74,6 +75,7 @@
     <div>
       <strong>Editor visual de flujo</strong>
       <span style="font-size:12px; opacity:.9; margin-left:8px;">(máx. 3 botones por nodo)</span>
+      
     </div>
     <div class="actions">
       <button class="btn reload" onclick="reloadFromServer()">↻ Recargar</button>
@@ -132,7 +134,7 @@
   <script>
     const FLOW_LIMIT = 3;
     let flow = {{ flow|tojson }};
-    if (!flow || typeof flow !== 'object') flow = { start_node: null, nodes: {} };
+  if (!flow || typeof flow !== 'object') flow = { start_node: null, nodes: {} };
 
   const nodesEl = document.getElementById('nodes');
     const linesSvg = document.querySelector('svg.lines');
@@ -153,9 +155,8 @@
     }
 
     function ensureDefaults(){
-      if (typeof flow.enabled !== 'boolean') flow.enabled = true;
       if (!flow.nodes) flow.nodes = {};
-      // Si no hay nodos, crear flujo base: inicio -> welcome -> categorias
+      // Si no hay nodos, crear flujo base mínimo: inicio -> welcome
       if (Object.keys(flow.nodes).length === 0) {
         flow.nodes = {
           'start': {
@@ -166,37 +167,9 @@
           },
           'welcome': {
             type: 'action',
-            text: '👋 Hola, soy Fanty, tu asistente virtual. ¿Qué deseas hacer hoy?',
-            buttons: [ { title: '📦 Ver catálogo', next: 'categorias' } ],
+            text: '👋 Hola, soy Fanty, tu asistente virtual. ¡Bienvenida!',
+            buttons: [],
             pos: { x: 420, y: 40 }
-          },
-          'categorias': {
-            type: 'action',
-            text: 'Elige una categoría:',
-            buttons: [
-              { title: '🔥 Disfraz Sexy', next: 'cat_disfraz' },
-              { title: '👙 Lencería', next: 'cat_lenceria' },
-              { title: '🧦 Mallas', next: 'cat_mallas' }
-            ],
-            pos: { x: 800, y: 40 }
-          },
-          'cat_disfraz': {
-            type: 'action',
-            text: 'Sube el PDF o imágenes del catálogo Disfraz en "Agregar archivo/foto" (se enviarán antes del texto).',
-            buttons: [ { title: '🔙 Volver', next: 'categorias' } ],
-            pos: { x: 800, y: 260 }
-          },
-          'cat_lenceria': {
-            type: 'action',
-            text: 'Sube el PDF o imágenes del catálogo Lencería en "Agregar archivo/foto" (se enviarán antes del texto).',
-            buttons: [ { title: '🔙 Volver', next: 'categorias' } ],
-            pos: { x: 1160, y: 260 }
-          },
-          'cat_mallas': {
-            type: 'action',
-            text: 'Sube el PDF o imágenes del catálogo Mallas en "Agregar archivo/foto" (se enviarán antes del texto).',
-            buttons: [ { title: '🔙 Volver', next: 'categorias' } ],
-            pos: { x: 1440, y: 260 }
           }
         };
         flow.start_node = 'start';
@@ -211,6 +184,7 @@
 
     function renderAll(){
       ensureDefaults();
+      
       // Sidebar list
       startNodeSel.innerHTML = '';
       Object.keys(flow.nodes).forEach(id => {
@@ -296,12 +270,6 @@
       }
 
       if ((node.type||'action') === 'start') {
-        // Toggle de encendido/apagado del flujo (global), visible en cajita de inicio
-        const toggleWrap = document.createElement('div'); toggleWrap.style.display='flex'; toggleWrap.style.alignItems='center'; toggleWrap.style.gap='8px'; toggleWrap.style.margin='4px 0 6px';
-        const toggle = document.createElement('input'); toggle.type='checkbox'; toggle.checked = !!flow.enabled; toggle.id = `en_${id}`;
-        toggle.onchange = () => { flow.enabled = !!toggle.checked; };
-        const tl = document.createElement('label'); tl.setAttribute('for', `en_${id}`); tl.textContent = 'Flujo encendido'; tl.style.fontSize='13px'; tl.style.color='#333';
-        toggleWrap.appendChild(toggle); toggleWrap.appendChild(tl); el.appendChild(toggleWrap);
         const kw = document.createElement('input'); kw.placeholder='Palabras clave separadas por coma (hola, holi, buenas)'; kw.value = (node.keywords||'');
         kw.style.width = '100%'; kw.oninput = () => { flow.nodes[id].keywords = kw.value; };
         el.appendChild(kw);
@@ -615,6 +583,8 @@
       clearTimeout(window.__toastTimer);
       window.__toastTimer = setTimeout(() => { t.style.display = 'none'; }, 2000);
     }
+
+    // status chip eliminado
 
     // Upload helpers
     async function handleUpload(nodeId, accept, kind){
