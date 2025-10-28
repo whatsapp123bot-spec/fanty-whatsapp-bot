@@ -968,9 +968,14 @@ def flow_editor():
             with open(FLOW_JSON_PATH, 'w', encoding='utf-8') as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
             load_flow_config()
+            # Respuesta JSON opcional para guardado sin redirección (desde el builder)
+            if request.args.get('format') == 'json':
+                return jsonify({"ok": True, "message": "✅ Flujo guardado correctamente."}), 200
             flash('✅ Flujo guardado correctamente.')
             return redirect(url_for('flow_editor', key=key))
         except Exception as e:
+            if request.args.get('format') == 'json':
+                return jsonify({"ok": False, "error": str(e)}), 400
             flash('❌ Error guardando flujo: ' + str(e))
             return render_template('flow.html', content=content)
     else:

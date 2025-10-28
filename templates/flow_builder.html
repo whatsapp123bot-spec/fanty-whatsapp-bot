@@ -113,6 +113,10 @@
     <input type="hidden" name="content" id="contentField" />
   </form>
 
+  <div id="toast" style="position:fixed; left:50%; transform:translateX(-50%); bottom:20px; background:#1e7e34; color:#fff; padding:10px 14px; border-radius:10px; box-shadow:0 6px 16px rgba(0,0,0,.2); font-weight:600; display:none; z-index:10000;">
+    ✅ Flujo guardado correctamente.
+  </div>
+
   <div id="overlay" class="overlay">
     <div class="panel">
       <h4>Nuevo nodo</h4>
@@ -562,12 +566,29 @@
         if (!Array.isArray(flow.nodes[k].assets)) delete flow.nodes[k].assets; // solo guardar si existe bien formada
       }
       const payload = JSON.stringify(flow, null, 2);
-      document.getElementById('contentField').value = payload;
-      document.getElementById('saveForm').submit();
+      // Guardar por fetch JSON para no salir del builder
+      const fd = new FormData();
+      fd.append('content', payload);
+      fetch('/flow?key={{ key }}&format=json', { method: 'POST', body: fd })
+        .then(async (r) => {
+          if (!r.ok) throw new Error((await r.json()).error || 'Error al guardar');
+          return r.json();
+        })
+        .then(() => showToast('✅ Flujo guardado correctamente.'))
+        .catch(err => showToast('❌ Error al guardar: ' + err.message, true));
     }
 
     function reloadFromServer(){
       window.location.reload();
+    }
+
+    function showToast(msg, isError){
+      const t = document.getElementById('toast');
+      t.textContent = msg;
+      t.style.background = isError ? '#dc3545' : '#1e7e34';
+      t.style.display = 'block';
+      clearTimeout(window.__toastTimer);
+      window.__toastTimer = setTimeout(() => { t.style.display = 'none'; }, 2000);
     }
 
     // Upload helpers
