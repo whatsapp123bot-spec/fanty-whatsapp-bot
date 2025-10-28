@@ -187,8 +187,8 @@ def webhook():
                                 low = (text or '').strip().lower()
                                 greetings = ("hola", "holi", "buenas", "buenos días", "buenas tardes", "buenas noches")
                                 flow_nodes = (FLOW_CONFIG or {}).get('nodes') or {}
-                                # Ignoramos cualquier bandera de habilitado; el flujo se activa por palabras clave
-                                if flow_nodes:
+                                flow_enabled = (FLOW_CONFIG or {}).get('enabled', True)
+                                if flow_enabled and flow_nodes:
                                     matched_node = None
                                     try:
                                         for nid, ndef in flow_nodes.items():

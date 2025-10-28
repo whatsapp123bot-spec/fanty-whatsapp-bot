@@ -17,7 +17,9 @@
     .btn.reload { background: var(--primary); }
   .btn.add { background: #7444a8; }
     .btn.del { background: var(--red); }
-  /* status chip eliminado (ya no se usa) */
+  .status-chip { font-size:12px; padding:2px 6px; border-radius:6px; color:#fff; margin-left:8px; }
+  .status-chip.on { background:#198754; }
+  .status-chip.off { background:#6c757d; }
     .wrap { display:grid; grid-template-columns: 260px 1fr; gap:12px; padding: 12px; height: calc(100vh - 60px); }
     .sidebar { background: var(--card); border-radius:12px; padding:10px; overflow:auto; box-shadow: 0 6px 16px rgba(0,0,0,.06); }
     .sidebar h3 { margin:6px 6px 10px; }
@@ -75,7 +77,7 @@
     <div>
       <strong>Editor visual de flujo</strong>
       <span style="font-size:12px; opacity:.9; margin-left:8px;">(máx. 3 botones por nodo)</span>
-      
+  <span id="statusChip" class="status-chip off">Inactivo</span>
     </div>
     <div class="actions">
       <button class="btn reload" onclick="reloadFromServer()">↻ Recargar</button>
@@ -155,6 +157,7 @@
     }
 
     function ensureDefaults(){
+      if (typeof flow.enabled !== 'boolean') flow.enabled = true;
       if (!flow.nodes) flow.nodes = {};
       // Si no hay nodos, crear flujo base mínimo: inicio -> welcome
       if (Object.keys(flow.nodes).length === 0) {
@@ -181,7 +184,7 @@
         flow.nodes[k].type = flow.nodes[k].type || 'action';
       }
     }
-
+  updateStatusChip();
     function renderAll(){
       ensureDefaults();
       
@@ -270,6 +273,13 @@
       }
 
       if ((node.type||'action') === 'start') {
+        // Toggle de encendido/apagado global del flujo
+        const toggleWrap = document.createElement('div'); toggleWrap.style.display='flex'; toggleWrap.style.alignItems='center'; toggleWrap.style.gap='8px'; toggleWrap.style.margin='4px 0 6px';
+        const toggle = document.createElement('input'); toggle.type='checkbox'; toggle.checked = !!flow.enabled; toggle.id = `en_${id}`;
+        toggle.onchange = () => { flow.enabled = !!toggle.checked; updateStatusChip(); };
+        const tl = document.createElement('label'); tl.setAttribute('for', `en_${id}`); tl.textContent = 'Flujo activo'; tl.style.fontSize='13px'; tl.style.color='#333';
+        toggleWrap.appendChild(toggle); toggleWrap.appendChild(tl); el.appendChild(toggleWrap);
+
         const kw = document.createElement('input'); kw.placeholder='Palabras clave separadas por coma (hola, holi, buenas)'; kw.value = (node.keywords||'');
         kw.style.width = '100%'; kw.oninput = () => { flow.nodes[id].keywords = kw.value; };
         el.appendChild(kw);
@@ -584,7 +594,14 @@
       window.__toastTimer = setTimeout(() => { t.style.display = 'none'; }, 2000);
     }
 
-    // status chip eliminado
+    function updateStatusChip(){
+      const chip = document.getElementById('statusChip');
+      if (!chip) return;
+      const on = !!(flow && flow.enabled);
+      chip.textContent = on ? 'Activo' : 'Inactivo';
+      chip.classList.toggle('on', on);
+      chip.classList.toggle('off', !on);
+    }
 
     // Upload helpers
     async function handleUpload(nodeId, accept, kind){
