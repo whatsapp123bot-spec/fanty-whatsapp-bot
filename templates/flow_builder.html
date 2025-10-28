@@ -32,7 +32,7 @@
   .node .head .drag { cursor:move; user-select:none; padding:2px 6px; color:#888; }
     .node textarea { width:100%; min-height: 80px; padding:8px; border:1px solid #ddd; border-radius:8px; font-size:14px; }
     .btns { margin-top:6px; }
-    .btns .row { display:grid; grid-template-columns: 1fr 90px 1fr auto; gap:6px; align-items:center; margin-bottom:6px; }
+  .btns .row { display:grid; grid-template-columns: 1fr 26px 160px auto; gap:6px; align-items:center; margin-bottom:6px; }
     .btns input, .btns select { padding:6px 8px; border:1px solid #ddd; border-radius:8px; }
     .btns .row .delbtn { background: var(--red); color:#fff; border:0; border-radius:8px; padding:6px 8px; cursor:pointer; }
     .btns .addRow { background: var(--primary); color:#fff; border:0; border-radius:8px; padding:6px 8px; cursor:pointer; }
@@ -40,6 +40,10 @@
   svg.lines { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; z-index:0; }
   .nodes { position:relative; padding:20px; min-width: 1200px; min-height: 800px; z-index:1; }
     .edge { stroke:#8a8aa8; stroke-width:2; marker-end: url(#arrow); }
+  .connector { width:14px; height:14px; border-radius:50%; border:2px solid #7444a8; background:#fff; display:inline-block; }
+  .connector:hover { background:#e7dbff; }
+  .inlet { width:10px; height:10px; border-radius:50%; border:2px solid #8a8aa8; background:#fff; display:inline-block; margin-right:6px; }
+  .preview { stroke:#7444a8; stroke-width:2; fill:none; stroke-dasharray:4 4; }
   </style>
 </head>
 <body>
@@ -66,9 +70,9 @@
       </div>
       <div id="nodeList" style="margin-top:10px;"></div>
       <p class="legend">Tips:
-        <br>• Título: texto del botón.
-        <br>• Tipo: "next" salta a otro nodo; "id" llama una acción del bot.
-        <br>• Acciones válidas: VER_CATALOGO, HABLAR_ASESOR, MAS_OPCIONES, VER_PAGOS, VER_ENVIO, MENU_PRINCIPAL, CATALOGO_*
+        <br>• Arrastra el circulito hacia otra caja para conectar ese botón.
+        <br>• O elige una acción del bot en el selector (HABLAR_ASESOR, VER_PAGOS, etc.).
+        <br>• Las flechas aparecen solo cuando el botón está conectado a otro nodo.
       </p>
     </aside>
 
@@ -163,9 +167,11 @@
       const head = document.createElement('div'); head.className='head';
       const drag = document.createElement('span'); drag.className='drag'; drag.textContent='⠿'; drag.title='Arrastra para mover';
       head.appendChild(drag);
-      const title = document.createElement('input'); title.type='text'; title.value = id; title.title='ID del nodo';
+  const title = document.createElement('input'); title.type='text'; title.value = id; title.title='ID del nodo';
       title.addEventListener('change', () => renameNode(id, title.value.trim()));
-      head.appendChild(title);
+  const inlet = document.createElement('span'); inlet.className='inlet'; inlet.title='Entrada de conexiones';
+  head.appendChild(inlet);
+  head.appendChild(title);
       if (flow.start_node === id) {
         const badge = document.createElement('span'); badge.textContent='inicio'; badge.className='start'; head.appendChild(badge);
       }
@@ -192,34 +198,25 @@
       const row = document.createElement('div'); row.className='row';
       const title = document.createElement('input'); title.placeholder='Título'; title.value = b.title || '';
       title.oninput = () => { flow.nodes[nodeId].buttons[idx].title = title.value; refresh(); };
+      // Conector visual (drag para enlazar otro nodo)
+      const connector = document.createElement('span'); connector.className='connector'; connector.title='Arrastra a otra caja para conectar';
+      connector.addEventListener('mousedown', (e) => startConnect(e, nodeId, idx, connector));
 
-      const type = document.createElement('select');
-      type.innerHTML = '<option value="next">next</option><option value="id">id</option>';
-      type.value = b.next ? 'next' : 'id';
-      type.onchange = () => {
-        if (type.value === 'next') { flow.nodes[nodeId].buttons[idx] = { title: title.value, next: Object.keys(flow.nodes)[0] || null }; }
-        else { flow.nodes[nodeId].buttons[idx] = { title: title.value, id: '' }; }
+      // Selector de acciones del bot (opcional)
+      const actionSel = document.createElement('select');
+      const actions = ['', 'VER_CATALOGO','HABLAR_ASESOR','MAS_OPCIONES','VER_PAGOS','VER_ENVIO','MENU_PRINCIPAL','CATALOGO_DISFRAZ','CATALOGO_LENCERIA','CATALOGO_MALLAS'];
+      actionSel.innerHTML = actions.map(a => a?`<option value="${a}">${a}</option>`:'<option value="">(sin acción)</option>').join('');
+      if (b.id) actionSel.value = b.id; else actionSel.value = '';
+      actionSel.onchange = () => {
+        const v = actionSel.value;
+        if (v) { flow.nodes[nodeId].buttons[idx] = { title: title.value, id: v }; }
+        else { flow.nodes[nodeId].buttons[idx] = { title: title.value }; }
         refresh();
       };
 
-      const value = document.createElement('select');
-      const valueId = document.createElement('input'); valueId.placeholder='ID acción (ej. VER_PAGOS)';
-      function syncValueInputs(){
-        const isNext = type.value === 'next';
-        value.style.display = isNext ? 'block' : 'none';
-        valueId.style.display = isNext ? 'none' : 'block';
-      }
-      // Setup value (next)
-      Object.keys(flow.nodes).forEach(id => { const o=document.createElement('option'); o.value=id; o.textContent=id; value.appendChild(o); });
-      if (b.next) value.value = b.next; value.onchange = () => { flow.nodes[nodeId].buttons[idx].next = value.value; refresh(); };
-      // Setup value (id)
-      if (b.id) valueId.value = b.id; valueId.oninput = () => { flow.nodes[nodeId].buttons[idx].id = valueId.value.trim(); };
-
       const del = document.createElement('button'); del.className='delbtn'; del.textContent='Quitar';
       del.onclick = () => { removeButton(nodeId, idx); };
-
-      row.appendChild(title); row.appendChild(type); row.appendChild(value); row.appendChild(valueId); row.appendChild(del);
-      syncValueInputs();
+      row.appendChild(title); row.appendChild(connector); row.appendChild(actionSel); row.appendChild(del);
       return row;
     }
 
@@ -303,6 +300,49 @@
           linesSvg.appendChild(path);
         });
       });
+    }
+
+    // Conexión visual (drag desde el conector a otro nodo)
+    let connecting = null; // { nodeId, idx, x0, y0, preview }
+    function startConnect(e, nodeId, idx, connectorEl){
+      e.preventDefault();
+      const rect = connectorEl.getBoundingClientRect();
+      const host = canvasEl.getBoundingClientRect();
+      const x0 = rect.left - host.left + rect.width/2;
+      const y0 = rect.top - host.top + rect.height/2;
+      const p = document.createElementNS('http://www.w3.org/2000/svg','path');
+      p.setAttribute('class','preview');
+      linesSvg.appendChild(p);
+      connecting = { nodeId, idx, x0, y0, preview: p };
+      document.addEventListener('mousemove', onConnectMove);
+      document.addEventListener('mouseup', endConnect);
+    }
+    function onConnectMove(e){
+      if (!connecting) return;
+      const host = canvasEl.getBoundingClientRect();
+      const x1 = e.clientX - host.left; const y1 = e.clientY - host.top;
+      const mx = (connecting.x0 + x1)/2;
+      const d = `M ${connecting.x0} ${connecting.y0} C ${mx} ${connecting.y0}, ${mx} ${y1}, ${x1} ${y1}`;
+      connecting.preview.setAttribute('d', d);
+    }
+    function endConnect(e){
+      document.removeEventListener('mousemove', onConnectMove);
+      document.removeEventListener('mouseup', endConnect);
+      if (!connecting) return;
+      // Buscar nodo bajo el puntero
+      const el = document.elementFromPoint(e.clientX, e.clientY);
+      let card = el;
+      while (card && !card.classList?.contains('node')) card = card.parentElement;
+      if (card && card.dataset.nodeId) {
+        const target = card.dataset.nodeId;
+        const btns = flow.nodes[connecting.nodeId].buttons || [];
+        btns[connecting.idx] = { title: btns[connecting.idx]?.title || 'Opción', next: target };
+        flow.nodes[connecting.nodeId].buttons = btns;
+      }
+      // limpiar preview
+      if (connecting.preview && connecting.preview.parentNode) connecting.preview.parentNode.removeChild(connecting.preview);
+      connecting = null;
+      refresh();
     }
 
     function startDrag(e, el, id){
