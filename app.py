@@ -1,5 +1,7 @@
 import os
 import requests
+import sqlite3
+import time
 import json
 from flask import Flask, request, render_template, jsonify, redirect, url_for, flash
 from werkzeug.utils import secure_filename
@@ -32,6 +34,128 @@ TIKTOK_URL = os.getenv("TIKTOK_URL", "https://www.tiktok.com/@fantasa.ntima")
 FLOW_ENABLED = os.getenv("FLOW_ENABLED", "0") == "1"  # Obsoleto en webhook: preferimos flag en flow.json
 FLOW_JSON_PATH = os.path.join(BASE_DIR, 'flow.json')
 FLOW_CONFIG: dict = {}
+CONV_DB_PATH = os.path.join(BASE_DIR, 'conversations.db')
+
+
+def init_conversations_db():
+    try:
+        conn = sqlite3.connect(CONV_DB_PATH)
+        cur = conn.cursor()
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS users (
+                wa_id TEXT PRIMARY KEY,
+                name TEXT,
+                human_requested INTEGER DEFAULT 0,
+                last_message_at INTEGER DEFAULT 0
+            )
+            """
+        )
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS messages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                wa_id TEXT,
+                direction TEXT, -- 'in' | 'out'
+                mtype TEXT,
+                body TEXT,
+                ts INTEGER
+            )
+            """
+        )
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print('⚠️ No se pudo inicializar conversations.db:', e)
+
+
+def _db_execute(query: str, params: tuple = ()):  # simple helper
+    conn = sqlite3.connect(CONV_DB_PATH)
+    cur = conn.cursor()
+    cur.execute(query, params)
+    conn.commit()
+    conn.close()
+
+
+def save_incoming_message(wa_id: str, body: str, mtype: str = 'text', name: str | None = None, ts: int | None = None):
+    try:
+        ts = ts or int(time.time())
+        # upsert user
+        conn = sqlite3.connect(CONV_DB_PATH)
+        cur = conn.cursor()
+        cur.execute("SELECT wa_id FROM users WHERE wa_id=?", (wa_id,))
+        exists = cur.fetchone()
+        if exists:
+            if name:
+                cur.execute("UPDATE users SET name=?, last_message_at=? WHERE wa_id=?", (name, ts, wa_id))
+            else:
+                cur.execute("UPDATE users SET last_message_at=? WHERE wa_id=?", (ts, wa_id))
+        else:
+            cur.execute("INSERT INTO users (wa_id, name, last_message_at) VALUES (?,?,?)", (wa_id, name or '', ts))
+        cur.execute("INSERT INTO messages (wa_id, direction, mtype, body, ts) VALUES (?,?,?,?,?)", (wa_id, 'in', mtype, body or '', ts))
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print('⚠️ No se pudo guardar mensaje entrante:', e)
+
+
+def save_outgoing_message(wa_id: str, body: str, mtype: str = 'text', ts: int | None = None):
+    try:
+        ts = ts or int(time.time())
+        _db_execute("INSERT INTO messages (wa_id, direction, mtype, body, ts) VALUES (?,?,?,?,?)", (wa_id, 'out', mtype, body or '', ts))
+        _db_execute("UPDATE users SET last_message_at=? WHERE wa_id=?", (ts, wa_id))
+    except Exception as e:
+        print('⚠️ No se pudo guardar mensaje saliente:', e)
+
+
+def set_human_requested(wa_id: str, value: bool):
+    try:
+        _db_execute("UPDATE users SET human_requested=? WHERE wa_id=?", (1 if value else 0, wa_id))
+    except Exception as e:
+        print('⚠️ No se pudo actualizar human_requested:', e)
+
+
+def list_conversations(limit: int = 100):
+    try:
+        conn = sqlite3.connect(CONV_DB_PATH)
+        cur = conn.cursor()
+        cur.execute("SELECT wa_id, name, human_requested, last_message_at FROM users ORDER BY last_message_at DESC LIMIT ?", (limit,))
+        rows = cur.fetchall()
+        conn.close()
+        return [
+            {
+                'wa_id': r[0],
+                'name': r[1] or '',
+                'human_requested': bool(r[2] or 0),
+                'last_message_at': r[3] or 0,
+            }
+            for r in rows
+        ]
+    except Exception as e:
+        print('⚠️ No se pudo listar conversaciones:', e)
+        return []
+
+
+def get_conversation(wa_id: str, limit: int = 200):
+    try:
+        conn = sqlite3.connect(CONV_DB_PATH)
+        cur = conn.cursor()
+        cur.execute("SELECT human_requested, name FROM users WHERE wa_id=?", (wa_id,))
+        row_user = cur.fetchone() or (0, '')
+        cur.execute("SELECT direction, mtype, body, ts FROM messages WHERE wa_id=? ORDER BY ts ASC, id ASC LIMIT ?", (wa_id, limit))
+        rows = cur.fetchall()
+        conn.close()
+        return {
+            'wa_id': wa_id,
+            'name': (row_user[1] or ''),
+            'human_requested': bool(row_user[0] or 0),
+            'messages': [
+                { 'direction': r[0], 'mtype': r[1], 'body': r[2], 'ts': r[3] } for r in rows
+            ]
+        }
+    except Exception as e:
+        print('⚠️ No se pudo obtener conversación:', e)
+        return {'wa_id': wa_id, 'name': '', 'human_requested': False, 'messages': []}
 
 
 def load_flow_config():
@@ -68,6 +192,11 @@ def send_flow_node(to: str, node_id: str):
         digits = ''.join(ch for ch in raw_phone if ch.isdigit() or ch == '+')
         link = f"https://wa.me/{digits.lstrip('+')}" if digits else WHATSAPP_ADVISOR_URL
         body_text = (text or 'Te conecto con una asesora para ayudarte.\n') + f"\nChatear: {link}"
+        # Habilitar chat humano para este usuario
+        try:
+            set_human_requested(to, True)
+        except Exception:
+            pass
         payload = {
             "messaging_product": "whatsapp",
             "to": to,
@@ -141,11 +270,65 @@ def send_flow_node(to: str, node_id: str):
 
 # Cargar flujo al iniciar
 load_flow_config()
+init_conversations_db()
 
 @app.route('/')
 def home():
     # Pantalla principal: Vista previa o Agregar catálogos
     return render_template('index.html')
+
+
+@app.route('/live-chat')
+def live_chat_page():
+    key = request.args.get('key')
+    if key != VERIFY_TOKEN:
+        return 'Forbidden', 403
+    return render_template('live_chat.html', key=key)
+
+
+@app.get('/internal/conversations')
+def api_list_conversations():
+    key = request.args.get('key')
+    if key != VERIFY_TOKEN:
+        return jsonify({'error': 'forbidden'}), 403
+    data = list_conversations(limit=int(request.args.get('limit', '100')))
+    return jsonify({'items': data})
+
+
+@app.get('/internal/conversations/<wa_id>')
+def api_get_conversation(wa_id):
+    key = request.args.get('key')
+    if key != VERIFY_TOKEN:
+        return jsonify({'error': 'forbidden'}), 403
+    data = get_conversation(wa_id)
+    return jsonify(data)
+
+
+@app.post('/internal/send')
+def api_send_message():
+    key = request.args.get('key')
+    if key != VERIFY_TOKEN:
+        return jsonify({'error': 'forbidden'}), 403
+    wa_id = (request.form.get('wa_id') or request.json.get('wa_id') if request.is_json else request.form.get('wa_id'))
+    text = (request.form.get('text') or (request.json.get('text') if request.is_json else None)) or ''
+    if not wa_id or not text.strip():
+        return jsonify({'error': 'faltan campos'}), 400
+    # Verificar permiso de chat humano
+    try:
+        conn = sqlite3.connect(CONV_DB_PATH)
+        cur = conn.cursor()
+        cur.execute("SELECT human_requested FROM users WHERE wa_id=?", (wa_id,))
+        row = cur.fetchone()
+        conn.close()
+        allowed = bool(row and row[0])
+    except Exception:
+        allowed = False
+    if not allowed:
+        return jsonify({'error': 'usuario no solicitó chat humano'}), 403
+    # Enviar y registrar
+    send_whatsapp_text(wa_id, text)
+    save_outgoing_message(wa_id, text, 'text')
+    return jsonify({'ok': True})
 
 
 @app.route('/chat')
@@ -194,6 +377,15 @@ def webhook():
                             # Lógica basada SOLO en el flujo del panel (flow.json)
                             if msg_type == 'text':
                                 low = (text or '').strip().lower()
+                                # Guardar entrante
+                                try:
+                                    name = None
+                                    contacts = value.get('contacts') or []
+                                    if contacts:
+                                        name = (contacts[0].get('profile') or {}).get('name')
+                                    save_incoming_message(from_wa, text or '', 'text', name=name)
+                                except Exception:
+                                    pass
                                 greetings = ("hola", "holi", "buenas", "buenos días", "buenas tardes", "buenas noches")
                                 flow_nodes = (FLOW_CONFIG or {}).get('nodes') or {}
                                 flow_enabled = (FLOW_CONFIG or {}).get('enabled', True)
@@ -241,6 +433,16 @@ def webhook():
                                 elif itype == 'list_reply':
                                     reply_id = interactive.get('list_reply', {}).get('id')
                                 print("🔘 INTERACTIVE ID:", reply_id)
+                                # Guardar entrante de tipo interactivo (como texto con el título si existe)
+                                try:
+                                    title = ''
+                                    if itype == 'button_reply':
+                                        title = (interactive.get('button_reply') or {}).get('title') or ''
+                                    elif itype == 'list_reply':
+                                        title = (interactive.get('list_reply') or {}).get('title') or ''
+                                    save_incoming_message(from_wa, title or reply_id or '', 'interactive')
+                                except Exception:
+                                    pass
                                 # Ramas del flujo del panel (ids tipo FLOW:<next>)
                                 if reply_id and isinstance(reply_id, str) and reply_id.startswith('FLOW:'):
                                     next_id = reply_id.split(':', 1)[1]
@@ -326,6 +528,18 @@ def _post_wa(payload: dict):
         print("➡️ Enviando WA (generic):", payload)
         resp = requests.post(url, headers=headers, json=payload, timeout=10)
         print("⬅️ Respuesta WA (generic):", resp.status_code, resp.text)
+        # Log básico de salientes si es texto o si tiene body
+        try:
+            to = payload.get('to')
+            if payload.get('type') == 'text':
+                body = (payload.get('text') or {}).get('body') or ''
+                save_outgoing_message(to, body, 'text')
+            elif payload.get('type') == 'interactive':
+                body = ((payload.get('interactive') or {}).get('body') or {}).get('text') or ''
+                if body:
+                    save_outgoing_message(to, body, 'interactive')
+        except Exception:
+            pass
         return {'status': resp.status_code, 'body': resp.text}
     except Exception as e:
         print('Excepción enviando WA (generic):', e)

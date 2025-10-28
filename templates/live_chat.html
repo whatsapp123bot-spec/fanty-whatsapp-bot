@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Chat en vivo</title>
+  <style>
+    :root{ --bg:#f6f7fb; --card:#fff; --text:#222; --muted:#666; --primary:#5b2a86; }
+    *{ box-sizing:border-box; }
+    body{ margin:0; background:var(--bg); color:var(--text); font-family:system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; height:100vh; display:flex; flex-direction:column; }
+    header{ background:var(--primary); color:#fff; padding:12px 16px; display:flex; align-items:center; justify-content:space-between; }
+    .wrap{ display:grid; grid-template-columns: 320px 1fr; gap:12px; padding:12px; flex:1; }
+    .panel{ background:var(--card); border-radius:12px; box-shadow:0 6px 16px rgba(0,0,0,.08); overflow:hidden; display:flex; flex-direction:column; }
+    .threads{ overflow:auto; }
+    .threads .item{ padding:12px; border-bottom:1px solid #eee; cursor:pointer; display:flex; gap:8px; align-items:center; }
+    .threads .item:hover{ background:#fafafa; }
+    .threads .name{ font-weight:700; }
+    .threads .meta{ font-size:12px; color:var(--muted); }
+    .chat{ display:flex; flex-direction:column; }
+    .messages{ flex:1; padding:12px; overflow:auto; background:#f3f4f8; }
+    .msg{ max-width:70%; margin:6px 0; padding:8px 10px; border-radius:10px; box-shadow:0 2px 6px rgba(0,0,0,.06); }
+    .msg.in{ background:#fff; align-self:flex-start; }
+    .msg.out{ background:#d9fdd3; align-self:flex-end; }
+    .composer{ display:flex; gap:8px; padding:10px; border-top:1px solid #eee; }
+    .composer input{ flex:1; padding:10px 12px; border:1px solid #ddd; border-radius:8px; }
+    .composer button{ padding:10px 14px; border:0; border-radius:8px; background:#128c7e; color:#fff; font-weight:700; cursor:pointer; }
+    .badge{ font-size:11px; padding:2px 6px; border-radius:6px; color:#fff; }
+    .badge.on{ background:#198754; }
+    .badge.off{ background:#6c757d; }
+  </style>
+</head>
+<body>
+  <header>
+    <div><strong>Chat en vivo</strong> <span id="statusUser" class="badge off">Sin usuario</span></div>
+    <div>
+      <a href="/" style="color:#fff; text-decoration:none; font-weight:600;">← Volver</a>
+    </div>
+  </header>
+  <div class="wrap">
+    <aside class="panel">
+      <div style="padding:10px; font-weight:700;">Conversaciones</div>
+      <div id="threads" class="threads"></div>
+    </aside>
+    <section class="panel chat">
+      <div id="messages" class="messages"></div>
+      <div class="composer">
+        <input id="input" type="text" placeholder="Escribe un mensaje..." />
+        <button onclick="send()">Enviar</button>
+      </div>
+    </section>
+  </div>
+  <script>
+    const KEY = {{ key|tojson }};
+    let current = null; // wa_id
+    let currentAllowed = false;
+
+    async function fetchThreads(){
+      const r = await fetch('/internal/conversations?key='+encodeURIComponent(KEY));
+      const data = await r.json();
+      const box = document.getElementById('threads');
+      box.innerHTML = '';
+      (data.items||[]).forEach(t => {
+        const item = document.createElement('div'); item.className='item';
+        item.onclick = ()=> openThread(t.wa_id);
+        const info = document.createElement('div');
+        const name = document.createElement('div'); name.className='name'; name.textContent = t.name || t.wa_id;
+        const meta = document.createElement('div'); meta.className='meta'; meta.textContent = new Date((t.last_message_at||0)*1000).toLocaleString();
+        info.appendChild(name); info.appendChild(meta);
+        const badge = document.createElement('span'); badge.className='badge '+ (t.human_requested ? 'on' : 'off'); badge.textContent = t.human_requested ? 'Humano ON' : 'Humano OFF';
+        item.appendChild(badge); item.appendChild(info);
+        box.appendChild(item);
+      });
+    }
+
+    async function openThread(wa){
+      current = wa;
+      const r = await fetch('/internal/conversations/'+encodeURIComponent(wa)+'?key='+encodeURIComponent(KEY));
+      const data = await r.json();
+      const msgBox = document.getElementById('messages');
+      msgBox.innerHTML='';
+      currentAllowed = !!data.human_requested;
+      updateUserStatus(currentAllowed, data.name || wa);
+      (data.messages||[]).forEach(m => {
+        const el = document.createElement('div'); el.className = 'msg '+ (m.direction==='out'?'out':'in'); el.textContent = m.body || '';
+        msgBox.appendChild(el);
+      });
+      msgBox.scrollTop = msgBox.scrollHeight;
+      // Habilitar/deshabilitar input
+      const input = document.getElementById('input'); input.disabled = !currentAllowed; input.placeholder = currentAllowed ? 'Escribe un mensaje...' : 'El usuario no solicitó chat humano';
+    }
+
+    function updateUserStatus(on, name){
+      const st = document.getElementById('statusUser');
+      st.textContent = (name? name+ ' — ' : '') + (on? 'Humano ON' : 'Humano OFF');
+      st.classList.toggle('on', !!on); st.classList.toggle('off', !on);
+    }
+
+    async function send(){
+      if (!current) return;
+      const input = document.getElementById('input');
+      const text = input.value.trim();
+      if (!text) return;
+      const r = await fetch('/internal/send?key='+encodeURIComponent(KEY), { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ wa_id: current, text }) });
+      const data = await r.json();
+      if (data && data.ok){
+        input.value = '';
+        openThread(current); // recarga conversación
+      } else {
+        alert(data.error || 'No se pudo enviar');
+      }
+    }
+
+    // Polling simple de hilos
+    fetchThreads();
+    setInterval(fetchThreads, 5000);
+  </script>
+</body>
+</html>
