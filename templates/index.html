@@ -33,8 +33,9 @@
                     <div class="flow-editor" style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
                         <input id="flowKey" type="password" placeholder="Clave (VERIFY_TOKEN)" style="flex:1; min-width:200px; padding:10px 12px; border:1px solid #ddd; border-radius:8px;" />
                         <button onclick="openFlow()" style="padding:10px 16px; border-radius:8px; border:0; background:#0b5ed7; color:white; font-weight:600; cursor:pointer;">🛠️ Abrir editor</button>
+                        <button onclick="openFlowVisual()" style="padding:10px 16px; border-radius:8px; border:0; background:#198754; color:white; font-weight:600; cursor:pointer;">🔧 Editor visual</button>
                     </div>
-                    <p style="font-size:12px; color:#777; margin-top:8px;">Ruta directa: <code>/flow?key=TU_CLAVE</code></p>
+                    <p style="font-size:12px; color:#777; margin-top:8px;">Rutas directas: <code>/flow?key=TU_CLAVE</code> y <code>/flow/builder?key=TU_CLAVE</code></p>
                 </div>
             </div>
             <div class="status" style="margin-top:12px; font-size:14px; color:#555; text-align:center;">
@@ -49,6 +50,14 @@
                 return;
             }
             window.location.href = '/flow?key=' + encodeURIComponent(key);
+        }
+        function openFlowVisual() {
+            const key = (document.getElementById('flowKey')?.value || '').trim();
+            if (!key) {
+                alert('Ingresa tu clave (VERIFY_TOKEN)');
+                return;
+            }
+            window.location.href = '/flow/builder?key=' + encodeURIComponent(key);
         }
     </script>
 </body>
