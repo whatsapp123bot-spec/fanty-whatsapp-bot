@@ -103,11 +103,11 @@ def internal_subscribe():
         return f"error: {e}", 500
 
 
-def send_whatsapp_text(to: str, body: str) -> None:
+def send_whatsapp_text(to: str, body: str):
     """Envía un mensaje de texto usando WhatsApp Cloud API."""
     if not WHATSAPP_TOKEN or not PHONE_NUMBER_ID:
         print('WHATSAPP_TOKEN o PHONE_NUMBER_ID no configurados; omitiendo envío.')
-        return
+        return None
     url = f"https://graph.facebook.com/v19.0/{PHONE_NUMBER_ID}/messages"
     headers = {
         "Authorization": f"Bearer {WHATSAPP_TOKEN}",
@@ -125,8 +125,16 @@ def send_whatsapp_text(to: str, body: str) -> None:
         print("⬅️ Respuesta WA:", resp.status_code, resp.text)
         if resp.status_code >= 400:
             print('Error enviando mensaje WA:', resp.status_code, resp.text)
+        return {
+            'status': resp.status_code,
+            'body': resp.text
+        }
     except Exception as e:
         print('Excepción enviando mensaje WA:', e)
+        return {
+            'status': 0,
+            'body': str(e)
+        }
 
 
 @app.route('/send_message', methods=['POST'])
@@ -284,8 +292,14 @@ def internal_send_test():
     text = request.args.get('text') or 'Prueba desde Fanty'
     if not to:
         return 'Falta parámetro to (E.164, ej. +51987654321)', 400
-    send_whatsapp_text(to, text)
-    return 'ok', 200
+    # Normalizar número: solo dígitos (WA Cloud suele usar sin '+')
+    norm_to = ''.join(ch for ch in to if ch.isdigit())
+    result = send_whatsapp_text(norm_to, text)
+    return jsonify({
+        'phone_number_id': PHONE_NUMBER_ID,
+        'to': norm_to,
+        'result': result
+    }), 200
 
 
 @app.route('/internal/phone_info')
