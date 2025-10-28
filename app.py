@@ -828,6 +828,7 @@ def internal_health():
 
 
 @app.route('/flow', methods=['GET', 'POST'])
+@app.route('/flow/', methods=['GET', 'POST'])
 def flow_editor():
     """Editor simple del flujo en JSON. Protegido con ?key=VERIFY_TOKEN."""
     key = request.args.get('key')
@@ -864,6 +865,24 @@ def internal_reload_flow():
         return 'Forbidden', 403
     load_flow_config()
     return jsonify({"status": "ok", "nodes": list((FLOW_CONFIG or {}).get('nodes', {}).keys())})
+
+
+@app.route('/flow/builder')
+@app.route('/flow/builder/')
+def flow_builder():
+    """Editor visual simple del flujo (nodos y conexiones). Protegido con ?key=VERIFY_TOKEN."""
+    key = request.args.get('key')
+    if key != VERIFY_TOKEN:
+        return 'Forbidden', 403
+    current = {"start_node": None, "nodes": {}}
+    try:
+        if os.path.exists(FLOW_JSON_PATH):
+            with open(FLOW_JSON_PATH, 'r', encoding='utf-8') as f:
+                current = json.load(f)
+    except Exception:
+        pass
+    # Render con los datos actuales y la key para reusar el guardado en /flow
+    return render_template('flow_builder.html', flow=current, key=key)
 
 
 @app.route('/internal/send_test')
