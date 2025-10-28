@@ -286,6 +286,15 @@
         const kw = document.createElement('input'); kw.placeholder='Palabras clave separadas por coma (hola, holi, buenas)'; kw.value = (node.keywords||'');
         kw.style.width = '100%'; kw.oninput = () => { flow.nodes[id].keywords = kw.value; };
         el.appendChild(kw);
+
+        // Frases exactas (una por línea) para activar desde links con texto predefinido
+        const ex = document.createElement('textarea');
+        ex.placeholder = 'Frases exactas (una por línea) — para links wa.me?text=...';
+        ex.value = node.exact || '';
+        ex.style.minHeight = '60px';
+        ex.addEventListener('input', () => { flow.nodes[id].exact = ex.value; });
+        el.appendChild(ex);
+
         // Conector único para salida del nodo de inicio
         const sc = document.createElement('span'); sc.className='start-connector'; sc.title='Arrastra para conectar el inicio con otro nodo';
         sc.dataset.startConnector = id;
@@ -586,6 +595,12 @@
         if (flow.nodes[k].type==='advisor') flow.nodes[k].phone = (flow.nodes[k].phone||'').trim();
         if (flow.nodes[k].type==='start') {
           flow.nodes[k].keywords = (flow.nodes[k].keywords||'').trim();
+          const exact = (flow.nodes[k].exact||'').trim();
+          if (exact) {
+            flow.nodes[k].exact = exact;
+          } else {
+            delete flow.nodes[k].exact;
+          }
           if (flow.nodes[k].next) flow.nodes[k].next = String(flow.nodes[k].next);
           // El nodo inicio no usa texto; limpiarlo si existe
           if ('text' in flow.nodes[k]) delete flow.nodes[k].text;

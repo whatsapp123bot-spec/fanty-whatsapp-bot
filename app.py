@@ -200,16 +200,31 @@ def webhook():
                                 if flow_enabled and flow_nodes:
                                     matched_node = None
                                     try:
+                                        # 1) Match exacto (frases exactas) en nodos de inicio
                                         for nid, ndef in flow_nodes.items():
                                             if (ndef.get('type') or 'action').lower() != 'start':
                                                 continue
-                                            kws_raw = (ndef.get('keywords') or '')
-                                            if not kws_raw:
-                                                continue
-                                            kws = [k.strip().lower() for k in kws_raw.split(',') if k.strip()]
-                                            if any(k and k in low for k in kws):
-                                                matched_node = nid
-                                                break
+                                            ex_raw = (ndef.get('exact') or '')
+                                            if ex_raw:
+                                                # Soporta separar por líneas y comas
+                                                parts = []
+                                                for line in ex_raw.split('\n'):
+                                                    parts.extend([p.strip().lower() for p in line.split(',') if p.strip()])
+                                                if any(p and p == low for p in parts):
+                                                    matched_node = nid
+                                                    break
+                                        # 2) Si no hubo exacto, probar por palabras clave (contiene)
+                                        if not matched_node:
+                                            for nid, ndef in flow_nodes.items():
+                                                if (ndef.get('type') or 'action').lower() != 'start':
+                                                    continue
+                                                kws_raw = (ndef.get('keywords') or '')
+                                                if not kws_raw:
+                                                    continue
+                                                kws = [k.strip().lower() for k in kws_raw.split(',') if k.strip()]
+                                                if any(k and k in low for k in kws):
+                                                    matched_node = nid
+                                                    break
                                     except Exception:
                                         matched_node = None
                                     if matched_node:
