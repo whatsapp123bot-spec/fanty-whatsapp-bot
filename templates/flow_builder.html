@@ -15,7 +15,7 @@
     .btn { padding:8px 12px; border-radius:8px; border:0; cursor:pointer; color:#fff; font-weight:600; }
     .btn.save { background: var(--green); }
     .btn.reload { background: var(--primary); }
-    .btn.add { background: #7444a8; }
+  .btn.add { background: #7444a8; }
     .btn.del { background: var(--red); }
     .wrap { display:grid; grid-template-columns: 260px 1fr; gap:12px; padding: 12px; height: calc(100vh - 60px); }
     .sidebar { background: var(--card); border-radius:12px; padding:10px; overflow:auto; box-shadow: 0 6px 16px rgba(0,0,0,.06); }
@@ -44,6 +44,13 @@
   .connector:hover { background:#e7dbff; }
   .inlet { width:10px; height:10px; border-radius:50%; border:2px solid #8a8aa8; background:#fff; display:inline-block; margin-right:6px; }
   .preview { stroke:#7444a8; stroke-width:2; fill:none; stroke-dasharray:4 4; }
+    /* Overlay para elegir tipo de nodo */
+    .overlay { position:fixed; inset:0; background:rgba(0,0,0,.35); display:none; align-items:center; justify-content:center; z-index:9999; }
+    .overlay .panel { background:#fff; border-radius:12px; padding:16px; width:340px; box-shadow:0 8px 28px rgba(0,0,0,.25); }
+    .overlay .panel h4 { margin:0 0 10px; }
+    .overlay .choices { display:flex; flex-direction:column; gap:8px; }
+    .overlay .choices button { padding:10px; border-radius:10px; border:1px solid #ddd; cursor:pointer; text-align:left; }
+    .type-badge { font-size:12px; color:#fff; background:#6c757d; padding:2px 6px; border-radius:6px; margin-left:6px; }
   </style>
 </head>
 <body>
@@ -62,7 +69,7 @@
     <aside class="sidebar">
       <div style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
         <h3 style="margin:0;">Nodos</h3>
-        <button class="btn add" onclick="addNode()">+ Añadir nodo</button>
+  <button class="btn add" onclick="openAddNodeMenu()">+ Añadir nodo</button>
       </div>
       <div style="margin-top:8px;">
         <label style="font-size:12px; color:var(--muted)">Nodo inicial</label>
@@ -85,6 +92,18 @@
     <input type="hidden" name="content" id="contentField" />
   </form>
 
+  <div id="overlay" class="overlay">
+    <div class="panel">
+      <h4>Nuevo nodo</h4>
+      <div class="choices">
+        <button onclick="addNodeOfType('action')">Acción (mensaje + botones)</button>
+        <button onclick="addNodeOfType('advisor')">Conversar con asesor (número WhatsApp)</button>
+        <button onclick="addNodeOfType('start')">Inicio (palabras clave)</button>
+      </div>
+      <div style="text-align:right; margin-top:10px;"><button class="btn del" onclick="closeAddNodeMenu()">Cerrar</button></div>
+    </div>
+  </div>
+
   <script>
     const FLOW_LIMIT = 3;
     let flow = {{ flow|tojson }};
@@ -96,6 +115,7 @@
     const startNodeSel = document.getElementById('startNode');
     const nodeListEl = document.getElementById('nodeList');
   let dragging = null; // { id, el, dx, dy }
+  const overlay = document.getElementById('overlay');
 
     function uid(base){
       let n = 1; let id = base || 'node';
@@ -109,6 +129,7 @@
       for (const k of Object.keys(flow.nodes)) {
         flow.nodes[k].text = flow.nodes[k].text || '';
         flow.nodes[k].buttons = (flow.nodes[k].buttons || []).slice(0, FLOW_LIMIT);
+        flow.nodes[k].type = flow.nodes[k].type || 'action';
       }
     }
 
@@ -171,21 +192,41 @@
   const inlet = document.createElement('span'); inlet.className='inlet'; inlet.title='Entrada de conexiones';
   head.appendChild(inlet);
   head.appendChild(title);
+      const tBadge = document.createElement('span'); tBadge.className = 'type-badge'; tBadge.textContent = (node.type||'action'); head.appendChild(tBadge);
       if (flow.start_node === id) {
         const badge = document.createElement('span'); badge.textContent='inicio'; badge.className='start'; head.appendChild(badge);
       }
       el.appendChild(head);
 
-      const ta = document.createElement('textarea'); ta.value = node.text || '';
-      ta.placeholder = 'Texto del mensaje'; ta.addEventListener('input', () => { flow.nodes[id].text = ta.value; });
-      el.appendChild(ta);
+      // Cuerpo según tipo de nodo
+      if ((node.type||'action') === 'advisor') {
+        const phone = document.createElement('input'); phone.placeholder='+51xxxxxxxxx (solo dígitos o con +)'; phone.value = node.phone||'';
+        phone.style.width = '100%'; phone.style.marginBottom = '6px';
+        phone.oninput = () => { flow.nodes[id].phone = phone.value.trim(); };
+        el.appendChild(phone);
+        const ta = document.createElement('textarea'); ta.value = node.text || 'Te contacto con una asesora por WhatsApp.';
+        ta.placeholder = 'Texto opcional que se enviará'; ta.addEventListener('input', () => { flow.nodes[id].text = ta.value; });
+        el.appendChild(ta);
+      } else {
+        const ta = document.createElement('textarea'); ta.value = node.text || '';
+        ta.placeholder = 'Texto del mensaje'; ta.addEventListener('input', () => { flow.nodes[id].text = ta.value; });
+        el.appendChild(ta);
+      }
 
-      const btns = document.createElement('div'); btns.className='btns';
-      (node.buttons||[]).forEach((b, idx) => btns.appendChild(renderButtonRow(id, b, idx)));
-      const add = document.createElement('button'); add.className='addRow'; add.textContent='+ Añadir botón';
-      add.onclick = () => { addButton(id); };
-      btns.appendChild(add);
-      el.appendChild(btns);
+      if ((node.type||'action') === 'start') {
+        const kw = document.createElement('input'); kw.placeholder='Palabras clave separadas por coma (hola, holi, buenas)'; kw.value = (node.keywords||'');
+        kw.style.width = '100%'; kw.oninput = () => { flow.nodes[id].keywords = kw.value; };
+        el.appendChild(kw);
+      }
+
+      if ((node.type||'action') !== 'advisor') {
+        const btns = document.createElement('div'); btns.className='btns';
+        (node.buttons||[]).forEach((b, idx) => btns.appendChild(renderButtonRow(id, b, idx)));
+        const add = document.createElement('button'); add.className='addRow'; add.textContent='+ Añadir botón';
+        add.onclick = () => { addButton(id); };
+        btns.appendChild(add);
+        el.appendChild(btns);
+      }
 
       // Drag & drop por la cabecera (manilla)
       drag.addEventListener('mousedown', (e) => startDrag(e, el, id));
@@ -208,10 +249,17 @@
       return row;
     }
 
-    function addNode(){
-      const id = uid('node');
-      flow.nodes[id] = { text: '', buttons: [] };
+    function openAddNodeMenu(){ overlay.style.display='flex'; }
+    function closeAddNodeMenu(){ overlay.style.display='none'; }
+    function addNodeOfType(type){
+      const id = uid(type==='start' ? 'start' : (type==='advisor'?'advisor':'node'));
+      const base = { type: type||'action', text: '', buttons: [], pos: null };
+      if (type==='advisor') base.phone='';
+      if (type==='start') base.keywords='hola, holi, buenas';
+      flow.nodes[id] = base;
+      if (type==='start') flow.start_node = id;
       if (!flow.start_node) flow.start_node = id;
+      closeAddNodeMenu();
       refresh();
     }
     function deleteNode(id){
@@ -390,6 +438,10 @@
           if (b.next) out.next = b.next; else if (b.id) out.id = b.id.trim();
           return out;
         });
+        // Asegurar type/phone/keywords persisten
+        flow.nodes[k].type = flow.nodes[k].type || 'action';
+        if (flow.nodes[k].type==='advisor') flow.nodes[k].phone = (flow.nodes[k].phone||'').trim();
+        if (flow.nodes[k].type==='start') flow.nodes[k].keywords = (flow.nodes[k].keywords||'').trim();
       }
       const payload = JSON.stringify(flow, null, 2);
       document.getElementById('contentField').value = payload;

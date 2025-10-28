@@ -47,11 +47,41 @@ def load_flow_config():
 
 
 def send_flow_node(to: str, node_id: str):
-    """Envía un nodo del flujo como texto + botones (máx. 3)."""
+    """Envía un nodo del flujo según su tipo.
+    Tipos soportados:
+      - action (default): texto + botones (máx 3). Cada botón puede tener next (FLOW:<id>) o id (acción del bot)
+      - advisor: envía un texto y un enlace a wa.me/<phone> configurado en el nodo
+      - start: igual que action; además puede tener 'keywords' (solo lectura en el builder)
+    """
     node = (FLOW_CONFIG or {}).get('nodes', {}).get(node_id)
     if not node:
         return send_whatsapp_text(to, "⚠️ Flujo no disponible en este paso.")
+    ntype = (node.get('type') or 'action').lower()
     text = node.get('text') or ''
+
+    if ntype == 'advisor':
+        # Preparar mensaje con enlace directo a WhatsApp del asesor
+        raw_phone = (node.get('phone') or '').strip()
+        digits = ''.join(ch for ch in raw_phone if ch.isdigit() or ch == '+')
+        link = f"https://wa.me/{digits.lstrip('+')}" if digits else WHATSAPP_ADVISOR_URL
+        body_text = (text or 'Te conecto con una asesora para ayudarte.\n') + f"\nChatear: {link}"
+        payload = {
+            "messaging_product": "whatsapp",
+            "to": to,
+            "type": "interactive",
+            "interactive": {
+                "type": "button",
+                "body": {"text": body_text},
+                "action": {
+                    "buttons": [
+                        {"type": "reply", "reply": {"id": "MENU_PRINCIPAL", "title": "🔙 Menú principal"}}
+                    ]
+                }
+            }
+        }
+        return _post_wa(payload)
+
+    # action / start: texto + botones
     raw_buttons = (node.get('buttons') or [])[:3]
     buttons = []
     for b in raw_buttons:
@@ -136,18 +166,40 @@ def webhook():
                             if msg_type == 'text':
                                 low = (text or '').strip().lower()
                                 greetings = ("hola", "holi", "buenas", "buenos días", "buenas tardes", "buenas noches")
-                                if any(g in low for g in greetings):
-                                    # Si hay flujo dinámico habilitado, usarlo; si no, menú estático
-                                    if FLOW_ENABLED and FLOW_CONFIG.get('start_node'):
+                                # Flow dinámico con palabras clave en nodos tipo 'start'
+                                if FLOW_ENABLED and (FLOW_CONFIG or {}).get('nodes'):
+                                    matched_node = None
+                                    try:
+                                        for nid, ndef in (FLOW_CONFIG.get('nodes') or {}).items():
+                                            kws_raw = (ndef.get('keywords') or '') if (ndef.get('type') or 'action').lower() == 'start' else ''
+                                            if not kws_raw:
+                                                continue
+                                            kws = [k.strip().lower() for k in kws_raw.split(',') if k.strip()]
+                                            if any(k and k in low for k in kws):
+                                                matched_node = nid
+                                                break
+                                    except Exception:
+                                        matched_node = None
+                                    if matched_node:
+                                        send_flow_node(from_wa, matched_node)
+                                    elif FLOW_CONFIG.get('start_node') and any(g in low for g in greetings):
                                         send_flow_node(from_wa, FLOW_CONFIG.get('start_node'))
                                     else:
-                                        send_whatsapp_buttons_welcome(from_wa)
+                                        # Si no hay match, responder eco corto
+                                        reply_text = (
+                                            f"👋 Hola, soy Fanty. Recibí tu mensaje: {text}" if text else
+                                            "👋 Hola, soy Fanty. Recibí tu mensaje."
+                                        )
+                                        send_whatsapp_text(from_wa, reply_text)
                                 else:
-                                    reply_text = (
-                                        f"👋 Hola, soy Fanty. Recibí tu mensaje: {text}" if text else
-                                        "👋 Hola, soy Fanty. Recibí tu mensaje."
-                                    )
-                                    send_whatsapp_text(from_wa, reply_text)
+                                    if any(g in low for g in greetings):
+                                        send_whatsapp_buttons_welcome(from_wa)
+                                    else:
+                                        reply_text = (
+                                            f"👋 Hola, soy Fanty. Recibí tu mensaje: {text}" if text else
+                                            "👋 Hola, soy Fanty. Recibí tu mensaje."
+                                        )
+                                        send_whatsapp_text(from_wa, reply_text)
                             elif msg_type == 'interactive':
                                 interactive = message.get('interactive', {})
                                 itype = interactive.get('type')
