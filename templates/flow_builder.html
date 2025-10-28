@@ -261,9 +261,15 @@
         phone.style.width = '100%'; phone.style.marginBottom = '6px';
         phone.oninput = () => { flow.nodes[id].phone = phone.value.trim(); };
         el.appendChild(phone);
-        const ta = document.createElement('textarea'); ta.value = node.text || 'Te contacto con una asesora por WhatsApp.';
+        const ta = document.createElement('textarea'); ta.value = node.text || 'Te estamos transfiriendo con una asesora humana. Un momento por favor.';
         ta.placeholder = 'Texto opcional que se enviará'; ta.addEventListener('input', () => { flow.nodes[id].text = ta.value; });
         el.appendChild(ta);
+        // Toggle para incluir links de redes y web
+        const lwrap = document.createElement('div'); lwrap.style.display='flex'; lwrap.style.alignItems='center'; lwrap.style.gap='8px'; lwrap.style.marginTop='6px';
+        const lin = document.createElement('input'); lin.type='checkbox'; lin.id = `links_${id}`; lin.checked = (typeof node.include_links === 'boolean') ? !!node.include_links : true;
+        lin.onchange = () => { flow.nodes[id].include_links = !!lin.checked; };
+        const ll = document.createElement('label'); ll.setAttribute('for', `links_${id}`); ll.textContent = 'Incluir links de web y redes sociales'; ll.style.fontSize='13px'; ll.style.color='#333';
+        lwrap.appendChild(lin); lwrap.appendChild(ll); el.appendChild(lwrap);
       } else if ((node.type||'action') === 'start') {
         // Nota para palabras clave (sin textarea)
         const note = document.createElement('div'); note.className='legend';
@@ -592,7 +598,10 @@
         });
         // Asegurar type/phone/keywords/assets persisten
         flow.nodes[k].type = flow.nodes[k].type || 'action';
-        if (flow.nodes[k].type==='advisor') flow.nodes[k].phone = (flow.nodes[k].phone||'').trim();
+        if (flow.nodes[k].type==='advisor') {
+          flow.nodes[k].phone = (flow.nodes[k].phone||'').trim();
+          flow.nodes[k].include_links = !!flow.nodes[k].include_links;
+        }
         if (flow.nodes[k].type==='start') {
           flow.nodes[k].keywords = (flow.nodes[k].keywords||'').trim();
           const exact = (flow.nodes[k].exact||'').trim();

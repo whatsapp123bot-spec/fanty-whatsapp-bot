@@ -190,11 +190,28 @@ def send_flow_node(to: str, node_id: str):
     text = node.get('text') or ''
 
     if ntype == 'advisor':
-        # Preparar mensaje con enlace directo a WhatsApp del asesor
+        # Preparar mensaje con enlace directo a WhatsApp del asesor y links de redes/web
         raw_phone = (node.get('phone') or '').strip()
         digits = ''.join(ch for ch in raw_phone if ch.isdigit() or ch == '+')
         link = f"https://wa.me/{digits.lstrip('+')}" if digits else WHATSAPP_ADVISOR_URL
-        body_text = (text or 'Te conecto con una asesora para ayudarte.\n') + f"\nChatear: {link}"
+
+        lines = []
+        if text:
+            lines.append(text)
+        else:
+            lines.append("Te estamos transfiriendo con una asesora humana. Un momento por favor.")
+        if node.get('include_links', True):
+            lines.append("\nMientras tanto, puedes revisar:")
+            if STORE_URL:
+                lines.append(f"• Web: {STORE_URL}")
+            if FB_URL:
+                lines.append(f"• Facebook: {FB_URL}")
+            if IG_URL:
+                lines.append(f"• Instagram: {IG_URL}")
+            if TIKTOK_URL:
+                lines.append(f"• TikTok: {TIKTOK_URL}")
+        lines.append(f"\nChatear: {link}")
+        body_text = "\n".join(lines)
         # Habilitar chat humano para este usuario
         try:
             set_human_requested(to, True)
