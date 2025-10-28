@@ -132,8 +132,29 @@ def webhook():
                                         if not r or r.get('status', 500) >= 400:
                                             # Fallback a link por texto
                                             send_whatsapp_text(from_wa, f"{label}: {link}")
+                                        # Después de enviar el catálogo, ofrecer siguientes pasos guiados
+                                        send_whatsapp_post_catalog_options(from_wa)
                                     else:
                                         send_whatsapp_text(from_wa, '⚠️ Aún no hay catálogo cargado para esa categoría.')
+                                elif reply_id == 'POSTCATALOGO_COMPRAR':
+                                    # Preguntar ubicación para definir métodos de envío
+                                    send_whatsapp_buttons_location(from_wa)
+                                elif reply_id == 'POSTCATALOGO_IR_TIENDA':
+                                    send_whatsapp_store_link(from_wa)
+                                elif reply_id == 'UBIC_LIMA':
+                                    send_whatsapp_buttons_shipping_lima(from_wa)
+                                elif reply_id == 'UBIC_PROVINCIAS':
+                                    send_whatsapp_buttons_shipping_provincias(from_wa)
+                                elif reply_id == 'ENVIO_LIMA_TREN':
+                                    send_whatsapp_buttons_lima_train(from_wa)
+                                elif reply_id == 'ENVIO_LIMA_DELIVERY':
+                                    send_whatsapp_buttons_lima_delivery(from_wa)
+                                elif reply_id == 'PROV_PROVIDE_DATA':
+                                    send_whatsapp_text(from_wa, (
+                                        '✍️ Por favor responde a este chat con: "Región - Provincia - Distrito (si aplica)"\n'
+                                        'Así te cotizamos el costo de envío y te ayudamos a completar tu pedido. '
+                                        'Si prefieres, también puedes hablar con una asesora con el botón del menú.'
+                                    ))
                                 else:
                                     send_whatsapp_text(from_wa, f"Recibí tu selección: {text}")
                     else:
@@ -284,6 +305,185 @@ def send_whatsapp_document(to: str, link: str, filename: str, caption: str | Non
     }
     if caption:
         payload["document"]["caption"] = caption
+    return _post_wa(payload)
+
+
+def send_whatsapp_post_catalog_options(to: str):
+    """Opciones guiadas tras enviar un catálogo."""
+    body_text = (
+        "¿Te gustaría avanzar con tu compra o conocer métodos de pago?\n"
+        "También puedes visitar nuestra tienda para ver precios y stock."
+    )
+    payload = {
+        "messaging_product": "whatsapp",
+        "to": to,
+        "type": "interactive",
+        "interactive": {
+            "type": "button",
+            "body": {"text": body_text},
+            "action": {
+                "buttons": [
+                    {"type": "reply", "reply": {"id": "POSTCATALOGO_COMPRAR", "title": "🛒 Quiero comprar"}},
+                    {"type": "reply", "reply": {"id": "VER_PAGOS", "title": "💳 Ver pagos"}},
+                    {"type": "reply", "reply": {"id": "POSTCATALOGO_IR_TIENDA", "title": "🛍️ Ir a tienda"}},
+                ]
+            }
+        }
+    }
+    return _post_wa(payload)
+
+
+def send_whatsapp_buttons_location(to: str):
+    """Pregunta ubicación para definir métodos de envío."""
+    body_text = (
+        "Para coordinar el envío, cuéntame dónde te encuentras:" 
+    )
+    payload = {
+        "messaging_product": "whatsapp",
+        "to": to,
+        "type": "interactive",
+        "interactive": {
+            "type": "button",
+            "body": {"text": body_text},
+            "action": {
+                "buttons": [
+                    {"type": "reply", "reply": {"id": "UBIC_LIMA", "title": "🏙️ Estoy en Lima"}},
+                    {"type": "reply", "reply": {"id": "UBIC_PROVINCIAS", "title": "🏞️ Provincias"}},
+                    {"type": "reply", "reply": {"id": "MENU_PRINCIPAL", "title": "🔙 Menú principal"}},
+                ]
+            }
+        }
+    }
+    return _post_wa(payload)
+
+
+def send_whatsapp_buttons_shipping_lima(to: str):
+    """Opciones y políticas de envío para Lima."""
+    body_text = (
+        "En Lima ofrecemos:\n\n"
+        "• 🚉 Entrega en estación de tren: costo adicional de S/5.\n"
+        "• 🏠 Delivery a domicilio: costo según distrito.\n\n"
+        "Elige una opción para continuar."
+    )
+    payload = {
+        "messaging_product": "whatsapp",
+        "to": to,
+        "type": "interactive",
+        "interactive": {
+            "type": "button",
+            "body": {"text": body_text},
+            "action": {
+                "buttons": [
+                    {"type": "reply", "reply": {"id": "ENVIO_LIMA_TREN", "title": "🚉 Estación (S/5)"}},
+                    {"type": "reply", "reply": {"id": "ENVIO_LIMA_DELIVERY", "title": "🏠 Delivery domicilio"}},
+                    {"type": "reply", "reply": {"id": "VOLVER_CATALOGO", "title": "🔙 Regresar al catálogo"}},
+                ]
+            }
+        }
+    }
+    return _post_wa(payload)
+
+
+def send_whatsapp_buttons_shipping_provincias(to: str):
+    """Información y guía para envíos a provincias."""
+    body_text = (
+        "Enviamos a provincias con Olva Courier (2 a 5 días hábiles).\n"
+        "El costo depende de tu región/provincia.\n\n"
+        "Indícanos tu región y provincia para cotizar, o habla con una asesora."
+    )
+    payload = {
+        "messaging_product": "whatsapp",
+        "to": to,
+        "type": "interactive",
+        "interactive": {
+            "type": "button",
+            "body": {"text": body_text},
+            "action": {
+                "buttons": [
+                    {"type": "reply", "reply": {"id": "PROV_PROVIDE_DATA", "title": "✍️ Enviar región/prov."}},
+                    {"type": "reply", "reply": {"id": "HABLAR_ASESOR", "title": "ℹ️ Hablar con asesor"}},
+                    {"type": "reply", "reply": {"id": "VOLVER_CATALOGO", "title": "🔙 Regresar al catálogo"}},
+                ]
+            }
+        }
+    }
+    return _post_wa(payload)
+
+
+def send_whatsapp_buttons_lima_train(to: str):
+    """Confirmación e instrucciones para entrega en estación (Lima)."""
+    body_text = (
+        "✅ Opción: Entrega en estación de tren.\n"
+        "Costo adicional: S/5.\n\n"
+        "¿Deseas continuar con tu compra?"
+    )
+    payload = {
+        "messaging_product": "whatsapp",
+        "to": to,
+        "type": "interactive",
+        "interactive": {
+            "type": "button",
+            "body": {"text": body_text},
+            "action": {
+                "buttons": [
+                    {"type": "reply", "reply": {"id": "VER_PAGOS", "title": "💳 Ver métodos de pago"}},
+                    {"type": "reply", "reply": {"id": "HABLAR_ASESOR", "title": "🗣️ Hablar con asesor"}},
+                    {"type": "reply", "reply": {"id": "MENU_PRINCIPAL", "title": "🔙 Menú principal"}},
+                ]
+            }
+        }
+    }
+    return _post_wa(payload)
+
+
+def send_whatsapp_buttons_lima_delivery(to: str):
+    """Instrucciones para delivery a domicilio en Lima."""
+    body_text = (
+        "🚚 Delivery a domicilio en Lima.\n"
+        "El costo depende del distrito.\n\n"
+        "Por favor responde con tu distrito para cotizar, o habla con una asesora."
+    )
+    payload = {
+        "messaging_product": "whatsapp",
+        "to": to,
+        "type": "interactive",
+        "interactive": {
+            "type": "button",
+            "body": {"text": body_text},
+            "action": {
+                "buttons": [
+                    {"type": "reply", "reply": {"id": "HABLAR_ASESOR", "title": "🗣️ Hablar con asesor"}},
+                    {"type": "reply", "reply": {"id": "VER_PAGOS", "title": "💳 Ver métodos de pago"}},
+                    {"type": "reply", "reply": {"id": "MENU_PRINCIPAL", "title": "🔙 Menú principal"}},
+                ]
+            }
+        }
+    }
+    return _post_wa(payload)
+
+
+def send_whatsapp_store_link(to: str):
+    """Muestra enlace a la tienda y navegación básica."""
+    body_text = (
+        f"🛍️ Visita nuestra tienda: {STORE_URL}\n\n"
+        "Ahí puedes ver precios actualizados y stock por producto."
+    )
+    payload = {
+        "messaging_product": "whatsapp",
+        "to": to,
+        "type": "interactive",
+        "interactive": {
+            "type": "button",
+            "body": {"text": body_text},
+            "action": {
+                "buttons": [
+                    {"type": "reply", "reply": {"id": "VER_PAGOS", "title": "💳 Ver métodos de pago"}},
+                    {"type": "reply", "reply": {"id": "VOLVER_CATALOGO", "title": "🔙 Regresar al catálogo"}},
+                    {"type": "reply", "reply": {"id": "MENU_PRINCIPAL", "title": "🔙 Menú principal"}},
+                ]
+            }
+        }
+    }
     return _post_wa(payload)
 
 
