@@ -127,7 +127,16 @@ def send_flow_node(to: str, node_id: str):
         }
         return _post_wa(payload)
     else:
-        return send_whatsapp_text(to, text)
+        # Sin botones: enviar texto (si hay) y, si el nodo es de acción y tiene next, encadenar al siguiente
+        sent = None
+        if text:
+            sent = send_whatsapp_text(to, text)
+        if ntype == 'action' and node.get('next'):
+            try:
+                return send_flow_node(to, node.get('next'))
+            except Exception:
+                pass
+        return sent
 
 
 # Cargar flujo al iniciar

@@ -52,6 +52,9 @@
   .preview { stroke:#7444a8; stroke-width:2; fill:none; stroke-dasharray:4 4; }
   .start-connector { position:absolute; bottom:10px; right:10px; width:14px; height:14px; border-radius:50%; border:2px solid #7444a8; background:#fff; }
   .start-connector:hover { background:#e7dbff; }
+  /* Conector de nodo acción (para flujos sin botones) */
+  .node-connector { position:absolute; bottom:10px; right:10px; width:14px; height:14px; border-radius:50%; border:2px solid #7444a8; background:#fff; }
+  .node-connector:hover { background:#e7dbff; }
   /* Assets UI */
   .assets { background:#fafbff; border:1px dashed #cfd4ff; padding:8px; border-radius:10px; margin-top:8px; }
   .assets .actions { display:flex; gap:8px; margin-bottom:6px; }
@@ -321,6 +324,12 @@
         add.onclick = () => { addButton(id); };
         btns.appendChild(add);
         el.appendChild(btns);
+
+        // Conector inferior derecho para enlazar siguiente nodo cuando no hay botones
+        const nc = document.createElement('span'); nc.className='node-connector'; nc.title='Arrastra para conectar este nodo con otro (flujo lineal)';
+        nc.dataset.nodeConnector = id;
+        nc.addEventListener('mousedown', (e) => startConnect(e, id, null, nc));
+        el.appendChild(nc);
       }
 
       // Drag & drop por la cabecera (manilla)
@@ -435,6 +444,12 @@
         const r = el.getBoundingClientRect();
         startConnPos[el.dataset.startConnector] = { x: (r.left - host.left + r.width/2)/ZOOM, y: (r.top - host.top + r.height/2)/ZOOM };
       });
+      // Posición del conector de nodo acción
+      const nodeConnPos = {};
+      document.querySelectorAll('[data-node-connector]').forEach(el => {
+        const r = el.getBoundingClientRect();
+        nodeConnPos[el.dataset.nodeConnector] = { x: (r.left - host.left + r.width/2)/ZOOM, y: (r.top - host.top + r.height/2)/ZOOM };
+      });
       // Pintar líneas next
       Object.entries(flow.nodes).forEach(([id, node]) => {
         (node.buttons||[]).forEach((b, idx) => {
@@ -459,6 +474,15 @@
         // Edge desde nodo start (si existe next)
         if ((node.type||'action') === 'start' && node.next && startConnPos[id] && inletPos[node.next]) {
           const p1 = startConnPos[id];
+          const p2 = inletPos[node.next];
+          const x1 = p1.x, y1 = p1.y; const x2 = p2.x, y2 = p2.y;
+          const path = document.createElementNS('http://www.w3.org/2000/svg','path');
+          const mx = (x1 + x2)/2; const d = `M ${x1} ${y1} C ${mx} ${y1}, ${mx} ${y2}, ${x2} ${y2}`;
+          path.setAttribute('d', d); path.setAttribute('class','edge'); path.setAttribute('fill','none'); path.setAttribute('stroke','#8a8aa8'); path.setAttribute('stroke-width','2'); path.setAttribute('marker-end','url(#arrow)'); linesSvg.appendChild(path);
+        }
+        // Edge desde nodo action (si existe next)
+        if ((node.type||'action') === 'action' && node.next && nodeConnPos[id] && inletPos[node.next]) {
+          const p1 = nodeConnPos[id];
           const p2 = inletPos[node.next];
           const x1 = p1.x, y1 = p1.y; const x2 = p2.x, y2 = p2.y;
           const path = document.createElementNS('http://www.w3.org/2000/svg','path');
