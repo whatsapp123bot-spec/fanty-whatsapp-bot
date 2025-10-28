@@ -24,7 +24,7 @@
     .sidebar .node-item input { width: 120px; padding:4px 6px; }
     .sidebar .node-item button { padding:4px 8px; border-radius:6px; border:0; cursor:pointer; }
     .canvas { position:relative; background:#f0f2f7; border-radius:12px; overflow:auto; box-shadow: 0 6px 16px rgba(0,0,0,.06); }
-    .nodes { position:relative; padding:20px; min-width: 1200px; min-height: 800px; }
+  .nodes { position:relative; padding:20px; min-width: 1200px; min-height: 800px; }
   .node { position:absolute; width: 300px; background:var(--card); border-radius:12px; padding:10px; box-shadow: 0 6px 16px rgba(0,0,0,.08); border:1px solid #e8e8f0; }
   .node .head { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:6px; }
     .node .head input[type="text"] { flex:1; font-weight:700; padding:6px 8px; border:1px solid #ddd; border-radius:8px; }
@@ -32,12 +32,12 @@
   .node .head .drag { cursor:move; user-select:none; padding:2px 6px; color:#888; }
     .node textarea { width:100%; min-height: 80px; padding:8px; border:1px solid #ddd; border-radius:8px; font-size:14px; }
     .btns { margin-top:6px; }
-  .btns .row { display:grid; grid-template-columns: 1fr 26px 160px auto; gap:6px; align-items:center; margin-bottom:6px; }
+  .btns .row { display:grid; grid-template-columns: 1fr 26px auto; gap:6px; align-items:center; margin-bottom:6px; }
     .btns input, .btns select { padding:6px 8px; border:1px solid #ddd; border-radius:8px; }
     .btns .row .delbtn { background: var(--red); color:#fff; border:0; border-radius:8px; padding:6px 8px; cursor:pointer; }
     .btns .addRow { background: var(--primary); color:#fff; border:0; border-radius:8px; padding:6px 8px; cursor:pointer; }
     .legend { font-size:12px; color:var(--muted); margin-top:4px; }
-  svg.lines { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; z-index:0; }
+  svg.lines { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; z-index:2; }
   .nodes { position:relative; padding:20px; min-width: 1200px; min-height: 800px; z-index:1; }
     .edge { stroke:#8a8aa8; stroke-width:2; marker-end: url(#arrow); }
   .connector { width:14px; height:14px; border-radius:50%; border:2px solid #7444a8; background:#fff; display:inline-block; }
@@ -71,7 +71,6 @@
       <div id="nodeList" style="margin-top:10px;"></div>
       <p class="legend">Tips:
         <br>• Arrastra el circulito hacia otra caja para conectar ese botón.
-        <br>• O elige una acción del bot en el selector (HABLAR_ASESOR, VER_PAGOS, etc.).
         <br>• Las flechas aparecen solo cuando el botón está conectado a otro nodo.
       </p>
     </aside>
@@ -200,23 +199,12 @@
       title.oninput = () => { flow.nodes[nodeId].buttons[idx].title = title.value; refresh(); };
       // Conector visual (drag para enlazar otro nodo)
       const connector = document.createElement('span'); connector.className='connector'; connector.title='Arrastra a otra caja para conectar';
+      connector.dataset.connector = `${nodeId}:${idx}`;
       connector.addEventListener('mousedown', (e) => startConnect(e, nodeId, idx, connector));
-
-      // Selector de acciones del bot (opcional)
-      const actionSel = document.createElement('select');
-      const actions = ['', 'VER_CATALOGO','HABLAR_ASESOR','MAS_OPCIONES','VER_PAGOS','VER_ENVIO','MENU_PRINCIPAL','CATALOGO_DISFRAZ','CATALOGO_LENCERIA','CATALOGO_MALLAS'];
-      actionSel.innerHTML = actions.map(a => a?`<option value="${a}">${a}</option>`:'<option value="">(sin acción)</option>').join('');
-      if (b.id) actionSel.value = b.id; else actionSel.value = '';
-      actionSel.onchange = () => {
-        const v = actionSel.value;
-        if (v) { flow.nodes[nodeId].buttons[idx] = { title: title.value, id: v }; }
-        else { flow.nodes[nodeId].buttons[idx] = { title: title.value }; }
-        refresh();
-      };
 
       const del = document.createElement('button'); del.className='delbtn'; del.textContent='Quitar';
       del.onclick = () => { removeButton(nodeId, idx); };
-      row.appendChild(title); row.appendChild(connector); row.appendChild(actionSel); row.appendChild(del);
+      row.appendChild(title); row.appendChild(connector); row.appendChild(del);
       return row;
     }
 
@@ -271,22 +259,38 @@
       // Limpia
       linesSvg.innerHTML = '<defs><marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#8a8aa8" /></marker></defs>';
       // Recalcular posiciones
+      const host = canvasEl.getBoundingClientRect();
       const nodeCards = Array.from(document.querySelectorAll('.node'));
       const pos = {};
       nodeCards.forEach(card => {
         const id = card.dataset.nodeId;
         const r = card.getBoundingClientRect();
-        // Coordenadas relativas al canvas (no al contenedor de nodos) para que el SVG coincida
-        const host = canvasEl.getBoundingClientRect();
         pos[id] = { x: r.left - host.left, y: r.top - host.top, w: r.width, h: r.height };
+      });
+      // Posiciones de conectores (por botón)
+      const connPos = {};
+      document.querySelectorAll('[data-connector]').forEach(el => {
+        const r = el.getBoundingClientRect();
+        connPos[el.dataset.connector] = { x: r.left - host.left + r.width/2, y: r.top - host.top + r.height/2 };
+      });
+      // Posición de entrada por nodo (inlet)
+      const inletPos = {};
+      nodeCards.forEach(card => {
+        const inlet = card.querySelector('.inlet');
+        if (inlet) {
+          const r = inlet.getBoundingClientRect();
+          inletPos[card.dataset.nodeId] = { x: r.left - host.left + r.width/2, y: r.top - host.top + r.height/2 };
+        }
       });
       // Pintar líneas next
       Object.entries(flow.nodes).forEach(([id, node]) => {
-        (node.buttons||[]).forEach(b => {
+        (node.buttons||[]).forEach((b, idx) => {
           if (!b.next || !pos[id] || !pos[b.next]) return;
-          const a = pos[id]; const z = pos[b.next];
-          const x1 = a.x + a.w; const y1 = a.y + a.h/2;
-          const x2 = z.x; const y2 = z.y + z.h/2;
+          const p1 = connPos[`${id}:${idx}`];
+          const p2 = inletPos[b.next] || { x: pos[b.next].x, y: pos[b.next].y + pos[b.next].h/2 };
+          if (!p1 || !p2) return;
+          const x1 = p1.x, y1 = p1.y;
+          const x2 = p2.x, y2 = p2.y;
           const path = document.createElementNS('http://www.w3.org/2000/svg','path');
           const mx = (x1 + x2)/2;
           const d = `M ${x1} ${y1} C ${mx} ${y1}, ${mx} ${y2}, ${x2} ${y2}`;
