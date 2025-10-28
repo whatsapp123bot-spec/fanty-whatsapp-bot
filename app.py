@@ -18,6 +18,13 @@ VERIFY_TOKEN = os.getenv("VERIFY_TOKEN", "fantasia123")
 WHATSAPP_TOKEN = os.getenv("WHATSAPP_TOKEN")
 PHONE_NUMBER_ID = os.getenv("PHONE_NUMBER_ID")
 
+# URLs de negocio (configurables por entorno, con valores por defecto actuales)
+STORE_URL = os.getenv("STORE_URL", "https://lenceria-fantasia-intima.onrender.com/")
+WHATSAPP_ADVISOR_URL = os.getenv("WHATSAPP_ADVISOR_URL", "https://wa.me/51932187068")
+FB_URL = os.getenv("FB_URL", "https://web.facebook.com/fantasiaintimaa/")
+IG_URL = os.getenv("IG_URL", "https://www.instagram.com/fantasia_intima_lenceria")
+TIKTOK_URL = os.getenv("TIKTOK_URL", "https://www.tiktok.com/@fantasa.ntima")
+
 @app.route('/')
 def home():
     # Pantalla principal: Vista previa o Agregar catálogos
@@ -88,12 +95,18 @@ def webhook():
                                 elif itype == 'list_reply':
                                     reply_id = interactive.get('list_reply', {}).get('id')
                                 print("🔘 INTERACTIVE ID:", reply_id)
-                                if reply_id == 'VER_CATALOGO':
-                                    send_whatsapp_buttons_categories(from_wa)
+                                if reply_id in ('VER_CATALOGO', 'VOLVER_CATALOGO'):
+                                    send_whatsapp_buttons_catalog(from_wa)
                                 elif reply_id == 'HABLAR_ASESOR':
-                                    send_whatsapp_text(from_wa, '💬 Un asesor te contactará en breve. Si prefieres, responde con tu consulta ahora mismo.')
+                                    send_whatsapp_buttons_advisor(from_wa)
                                 elif reply_id == 'MAS_OPCIONES':
-                                    send_whatsapp_text(from_wa, 'ℹ️ Pronto agregaremos más opciones. Mientras tanto, puedes escribir lo que necesitas.')
+                                    send_whatsapp_more_options(from_wa)
+                                elif reply_id == 'VER_PAGOS':
+                                    send_whatsapp_buttons_payments(from_wa)
+                                elif reply_id == 'VER_ENVIO':
+                                    send_whatsapp_buttons_shipping(from_wa)
+                                elif reply_id == 'MENU_PRINCIPAL':
+                                    send_whatsapp_buttons_welcome(from_wa)
                                 elif reply_id in ('CATALOGO_DISFRAZ', 'CATALOGO_LENCERIA', 'CATALOGO_MALLAS'):
                                     # Enviar PDF como documento si existe; fallback a link por texto
                                     fname = {
@@ -266,6 +279,134 @@ def send_whatsapp_document(to: str, link: str, filename: str, caption: str | Non
     }
     if caption:
         payload["document"]["caption"] = caption
+    return _post_wa(payload)
+
+
+def send_whatsapp_buttons_catalog(to: str):
+    """Muestra mensaje de catálogo y botones útiles (pagos/envío/menú)."""
+    body_text = (
+        "Aquí tienes nuestro catálogo de Lencería Fantasía Íntima 😍\n"
+        "Puedes ver todos los modelos disponibles y elegir tus favoritos 💕\n"
+        f"👉 Visitar tienda virtual: {STORE_URL}"
+    )
+    payload = {
+        "messaging_product": "whatsapp",
+        "to": to,
+        "type": "interactive",
+        "interactive": {
+            "type": "button",
+            "body": {"text": body_text},
+            "action": {
+                "buttons": [
+                    {"type": "reply", "reply": {"id": "VER_PAGOS", "title": "💳 Ver métodos de pago"}},
+                    {"type": "reply", "reply": {"id": "VER_ENVIO", "title": "🚚 Ver métodos de envío"}},
+                    {"type": "reply", "reply": {"id": "MENU_PRINCIPAL", "title": "🔙 Menú principal"}},
+                ]
+            }
+        }
+    }
+    return _post_wa(payload)
+
+
+def send_whatsapp_buttons_advisor(to: str):
+    """Mensaje con enlace a asesora y botón de regreso al menú."""
+    body_text = (
+        "Perfecto 💌 Te conectaré con una asesora para ayudarte directamente.\n"
+        "Haz clic en el siguiente enlace 👇\n"
+        f"Chatear con asesora: {WHATSAPP_ADVISOR_URL}"
+    )
+    payload = {
+        "messaging_product": "whatsapp",
+        "to": to,
+        "type": "interactive",
+        "interactive": {
+            "type": "button",
+            "body": {"text": body_text},
+            "action": {
+                "buttons": [
+                    {"type": "reply", "reply": {"id": "MENU_PRINCIPAL", "title": "🔙 Menú principal"}},
+                ]
+            }
+        }
+    }
+    return _post_wa(payload)
+
+
+def send_whatsapp_more_options(to: str):
+    """Mensaje con redes sociales y tienda, y botón de regreso al menú."""
+    body_text = (
+        "🌸 Aquí tienes más opciones para conocernos y seguirnos:\n\n"
+        f"💖 Tienda: {STORE_URL}\n"
+        f"📘 Facebook: {FB_URL}\n"
+        f"📸 Instagram: {IG_URL}\n"
+        f"🎵 TikTok: {TIKTOK_URL}"
+    )
+    payload = {
+        "messaging_product": "whatsapp",
+        "to": to,
+        "type": "interactive",
+        "interactive": {
+            "type": "button",
+            "body": {"text": body_text},
+            "action": {
+                "buttons": [
+                    {"type": "reply", "reply": {"id": "MENU_PRINCIPAL", "title": "🔙 Menú principal"}},
+                ]
+            }
+        }
+    }
+    return _post_wa(payload)
+
+
+def send_whatsapp_buttons_payments(to: str):
+    """Mensaje con métodos de pago y navegación."""
+    body_text = (
+        "💳 Aceptamos los siguientes métodos de pago:\n\n"
+        "Yape / Plin / Transferencia bancaria 💜\n\n"
+        "También puedes pagar contra entrega (solo en zonas disponibles)."
+    )
+    payload = {
+        "messaging_product": "whatsapp",
+        "to": to,
+        "type": "interactive",
+        "interactive": {
+            "type": "button",
+            "body": {"text": body_text},
+            "action": {
+                "buttons": [
+                    {"type": "reply", "reply": {"id": "VER_ENVIO", "title": "🚚 Ver métodos de envío"}},
+                    {"type": "reply", "reply": {"id": "VOLVER_CATALOGO", "title": "🔙 Regresar al catálogo"}},
+                    {"type": "reply", "reply": {"id": "MENU_PRINCIPAL", "title": "🔙 Menú principal"}},
+                ]
+            }
+        }
+    }
+    return _post_wa(payload)
+
+
+def send_whatsapp_buttons_shipping(to: str):
+    """Mensaje con métodos de envío y navegación."""
+    body_text = (
+        "🚚 Envíos a todo el Perú 🇵🇪\n\n"
+        "Lima: entrega en 1 a 2 días hábiles.\n"
+        "Provincias: 2 a 5 días hábiles con Olva Courier."
+    )
+    payload = {
+        "messaging_product": "whatsapp",
+        "to": to,
+        "type": "interactive",
+        "interactive": {
+            "type": "button",
+            "body": {"text": body_text},
+            "action": {
+                "buttons": [
+                    {"type": "reply", "reply": {"id": "VER_PAGOS", "title": "💳 Ver métodos de pago"}},
+                    {"type": "reply", "reply": {"id": "VOLVER_CATALOGO", "title": "🔙 Regresar al catálogo"}},
+                    {"type": "reply", "reply": {"id": "MENU_PRINCIPAL", "title": "🔙 Menú principal"}},
+                ]
+            }
+        }
+    }
     return _post_wa(payload)
 
 
