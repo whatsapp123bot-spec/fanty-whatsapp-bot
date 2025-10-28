@@ -95,7 +95,7 @@ def webhook():
                                 elif reply_id == 'MAS_OPCIONES':
                                     send_whatsapp_text(from_wa, 'ℹ️ Pronto agregaremos más opciones. Mientras tanto, puedes escribir lo que necesitas.')
                                 elif reply_id in ('CATALOGO_DISFRAZ', 'CATALOGO_LENCERIA', 'CATALOGO_MALLAS'):
-                                    # Enviar enlace al PDF si existe
+                                    # Enviar PDF como documento si existe; fallback a link por texto
                                     fname = {
                                         'CATALOGO_DISFRAZ': 'disfraz.pdf',
                                         'CATALOGO_LENCERIA': 'lenceria.pdf',
@@ -114,7 +114,10 @@ def webhook():
                                             label = '👙 Catálogo Lencería'
                                         elif reply_id == 'CATALOGO_MALLAS':
                                             label = '🧦 Catálogo Mallas'
-                                        send_whatsapp_text(from_wa, f"{label}: {link}")
+                                        r = send_whatsapp_document(from_wa, link, fname, caption=label)
+                                        if not r or r.get('status', 500) >= 400:
+                                            # Fallback a link por texto
+                                            send_whatsapp_text(from_wa, f"{label}: {link}")
                                     else:
                                         send_whatsapp_text(from_wa, '⚠️ Aún no hay catálogo cargado para esa categoría.')
                                 else:
@@ -247,6 +250,22 @@ def send_whatsapp_buttons_categories(to: str):
             }
         }
     }
+    return _post_wa(payload)
+
+
+def send_whatsapp_document(to: str, link: str, filename: str, caption: str | None = None):
+    """Envía un PDF como documento usando un link público (Render/static)."""
+    payload = {
+        "messaging_product": "whatsapp",
+        "to": to,
+        "type": "document",
+        "document": {
+            "link": link,
+            "filename": filename,
+        }
+    }
+    if caption:
+        payload["document"]["caption"] = caption
     return _post_wa(payload)
 
 
