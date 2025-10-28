@@ -87,6 +87,7 @@
 
     const nodesEl = document.getElementById('nodes');
     const linesSvg = document.querySelector('svg.lines');
+    const canvasEl = document.querySelector('.canvas');
     const startNodeSel = document.getElementById('startNode');
     const nodeListEl = document.getElementById('nodeList');
 
@@ -266,7 +267,8 @@
       nodeCards.forEach(card => {
         const id = card.dataset.nodeId;
         const r = card.getBoundingClientRect();
-        const host = nodesEl.getBoundingClientRect();
+        // Coordenadas relativas al canvas (no al contenedor de nodos) para que el SVG coincida
+        const host = canvasEl.getBoundingClientRect();
         pos[id] = { x: r.left - host.left, y: r.top - host.top, w: r.width, h: r.height };
       });
       // Pintar líneas next
@@ -306,6 +308,8 @@
     // Primer render
     renderAll();
     window.addEventListener('resize', drawEdges);
+    // Redibujar al desplazar el lienzo
+    canvasEl.addEventListener('scroll', drawEdges);
   </script>
 </body>
 </html>
