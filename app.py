@@ -96,7 +96,8 @@ def webhook():
                                     reply_id = interactive.get('list_reply', {}).get('id')
                                 print("🔘 INTERACTIVE ID:", reply_id)
                                 if reply_id in ('VER_CATALOGO', 'VOLVER_CATALOGO'):
-                                    send_whatsapp_buttons_catalog(from_wa)
+                                    # Mostrar las 3 categorías disponibles del catálogo
+                                    send_whatsapp_buttons_categories(from_wa)
                                 elif reply_id == 'HABLAR_ASESOR':
                                     send_whatsapp_buttons_advisor(from_wa)
                                 elif reply_id == 'MAS_OPCIONES':
@@ -247,13 +248,17 @@ def send_whatsapp_buttons_welcome(to: str):
 
 def send_whatsapp_buttons_categories(to: str):
     """Envía botones de categorías de catálogo."""
+    body_text = (
+        "Tenemos estas categorías disponibles.\n"
+        "Elige una para ver el catálogo en PDF:" 
+    )
     payload = {
         "messaging_product": "whatsapp",
         "to": to,
         "type": "interactive",
         "interactive": {
             "type": "button",
-            "body": {"text": "Elige una categoría de catálogo:"},
+            "body": {"text": body_text},
             "action": {
                 "buttons": [
                     {"type": "reply", "reply": {"id": "CATALOGO_DISFRAZ", "title": "🔥 Disfraz Sexy"}},
