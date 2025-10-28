@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Editor visual de flujo</title>
+  <style>
+    :root {
+      --bg: #f6f7fb; --card: #fff; --text: #222; --muted: #666; --primary: #0b5ed7; --green:#198754; --red:#dc3545;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--text); font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
+    header { padding: 14px 20px; background: #5b2a86; color:#fff; display:flex; align-items:center; justify-content:space-between; }
+    header .actions { display:flex; gap:8px; align-items:center; }
+    .btn { padding:8px 12px; border-radius:8px; border:0; cursor:pointer; color:#fff; font-weight:600; }
+    .btn.save { background: var(--green); }
+    .btn.reload { background: var(--primary); }
+    .btn.add { background: #7444a8; }
+    .btn.del { background: var(--red); }
+    .wrap { display:grid; grid-template-columns: 260px 1fr; gap:12px; padding: 12px; height: calc(100vh - 60px); }
+    .sidebar { background: var(--card); border-radius:12px; padding:10px; overflow:auto; box-shadow: 0 6px 16px rgba(0,0,0,.06); }
+    .sidebar h3 { margin:6px 6px 10px; }
+    .sidebar .node-item { display:flex; align-items:center; justify-content:space-between; padding:6px 8px; border-radius:8px; margin:4px 0; background:#fafafa; }
+    .sidebar .node-item input { width: 120px; padding:4px 6px; }
+    .sidebar .node-item button { padding:4px 8px; border-radius:6px; border:0; cursor:pointer; }
+    .canvas { position:relative; background:#f0f2f7; border-radius:12px; overflow:auto; box-shadow: 0 6px 16px rgba(0,0,0,.06); }
+    .nodes { position:relative; padding:20px; min-width: 1200px; min-height: 800px; }
+    .node { position:absolute; width: 300px; background:var(--card); border-radius:12px; padding:10px; box-shadow: 0 6px 16px rgba(0,0,0,.08); border:1px solid #e8e8f0; }
+    .node .head { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:6px; }
+    .node .head input[type="text"] { flex:1; font-weight:700; padding:6px 8px; border:1px solid #ddd; border-radius:8px; }
+    .node .head .start { font-size:12px; color:#fff; background:#ff7a59; padding:2px 6px; border-radius:6px; }
+    .node textarea { width:100%; min-height: 80px; padding:8px; border:1px solid #ddd; border-radius:8px; font-size:14px; }
+    .btns { margin-top:6px; }
+    .btns .row { display:grid; grid-template-columns: 1fr 90px 1fr auto; gap:6px; align-items:center; margin-bottom:6px; }
+    .btns input, .btns select { padding:6px 8px; border:1px solid #ddd; border-radius:8px; }
+    .btns .row .delbtn { background: var(--red); color:#fff; border:0; border-radius:8px; padding:6px 8px; cursor:pointer; }
+    .btns .addRow { background: var(--primary); color:#fff; border:0; border-radius:8px; padding:6px 8px; cursor:pointer; }
+    .legend { font-size:12px; color:var(--muted); margin-top:4px; }
+    svg.lines { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; }
+    .edge { stroke:#8a8aa8; stroke-width:2; marker-end: url(#arrow); }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <strong>Editor visual de flujo</strong>
+      <span style="font-size:12px; opacity:.9; margin-left:8px;">(máx. 3 botones por nodo)</span>
+    </div>
+    <div class="actions">
+      <button class="btn reload" onclick="reloadFromServer()">↻ Recargar</button>
+      <button class="btn save" onclick="saveFlow()">💾 Guardar</button>
+    </div>
+  </header>
+
+  <div class="wrap">
+    <aside class="sidebar">
+      <div style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
+        <h3 style="margin:0;">Nodos</h3>
+        <button class="btn add" onclick="addNode()">+ Añadir nodo</button>
+      </div>
+      <div style="margin-top:8px;">
+        <label style="font-size:12px; color:var(--muted)">Nodo inicial</label>
+        <select id="startNode" style="width:100%; padding:6px 8px; border:1px solid #ddd; border-radius:8px;"></select>
+      </div>
+      <div id="nodeList" style="margin-top:10px;"></div>
+      <p class="legend">Tips:
+        <br>• Título: texto del botón.
+        <br>• Tipo: "next" salta a otro nodo; "id" llama una acción del bot.
+        <br>• Acciones válidas: VER_CATALOGO, HABLAR_ASESOR, MAS_OPCIONES, VER_PAGOS, VER_ENVIO, MENU_PRINCIPAL, CATALOGO_*
+      </p>
+    </aside>
+
+    <section class="canvas">
+      <svg class="lines"></svg>
+      <div class="nodes" id="nodes"></div>
+    </section>
+  </div>
+
+  <form id="saveForm" method="post" action="/flow?key={{ key }}" style="display:none;">
+    <input type="hidden" name="content" id="contentField" />
+  </form>
+
+  <script>
+    const FLOW_LIMIT = 3;
+    let flow = {{ flow|tojson }};
+    if (!flow || typeof flow !== 'object') flow = { start_node: null, nodes: {} };
+
+    const nodesEl = document.getElementById('nodes');
+    const linesSvg = document.querySelector('svg.lines');
+    const startNodeSel = document.getElementById('startNode');
+    const nodeListEl = document.getElementById('nodeList');
+
+    function uid(base){
+      let n = 1; let id = base || 'node';
+      while(flow.nodes[id]) { id = (base||'node') + '_' + (++n); }
+      return id;
+    }
+
+    function ensureDefaults(){
+      flow.start_node = flow.start_node || Object.keys(flow.nodes)[0] || null;
+      if (!flow.nodes) flow.nodes = {};
+      for (const k of Object.keys(flow.nodes)) {
+        flow.nodes[k].text = flow.nodes[k].text || '';
+        flow.nodes[k].buttons = (flow.nodes[k].buttons || []).slice(0, FLOW_LIMIT);
+      }
+    }
+
+    function renderAll(){
+      ensureDefaults();
+      // Sidebar list
+      startNodeSel.innerHTML = '';
+      Object.keys(flow.nodes).forEach(id => {
+        const opt = document.createElement('option');
+        opt.value = id; opt.textContent = id; startNodeSel.appendChild(opt);
+      });
+      startNodeSel.value = flow.start_node || '';
+
+      nodeListEl.innerHTML = '';
+      Object.keys(flow.nodes).forEach(id => nodeListEl.appendChild(renderNodeListItem(id)));
+
+      // Canvas nodes
+      nodesEl.innerHTML = '';
+      let i=0;
+      const cols = 3; const gapX=360, gapY=220; // simple auto-grid
+      Object.entries(flow.nodes).forEach(([id, node]) => {
+        const x = (i % cols) * gapX + 40;
+        const y = Math.floor(i / cols) * gapY + 40;
+        nodesEl.appendChild(renderNodeCard(id, node, x, y));
+        i++;
+      });
+
+      drawEdges();
+      window.setTimeout(drawEdges, 50);
+    }
+
+    function renderNodeListItem(id){
+      const wrap = document.createElement('div');
+      wrap.className = 'node-item';
+      const inp = document.createElement('input');
+      inp.value = id; inp.title = 'ID del nodo';
+      inp.addEventListener('change', () => renameNode(id, inp.value.trim()));
+      const del = document.createElement('button');
+      del.textContent = '🗑️'; del.className='btn del';
+      del.onclick = () => { deleteNode(id); };
+      wrap.appendChild(inp); wrap.appendChild(del);
+      return wrap;
+    }
+
+    function renderNodeCard(id, node, x, y){
+      const el = document.createElement('div');
+      el.className = 'node'; el.style.left = x+'px'; el.style.top = y+'px';
+      el.dataset.nodeId = id;
+      el.innerHTML = '';
+
+      const head = document.createElement('div'); head.className='head';
+      const title = document.createElement('input'); title.type='text'; title.value = id; title.title='ID del nodo';
+      title.addEventListener('change', () => renameNode(id, title.value.trim()));
+      head.appendChild(title);
+      if (flow.start_node === id) {
+        const badge = document.createElement('span'); badge.textContent='inicio'; badge.className='start'; head.appendChild(badge);
+      }
+      el.appendChild(head);
+
+      const ta = document.createElement('textarea'); ta.value = node.text || '';
+      ta.placeholder = 'Texto del mensaje'; ta.addEventListener('input', () => { flow.nodes[id].text = ta.value; });
+      el.appendChild(ta);
+
+      const btns = document.createElement('div'); btns.className='btns';
+      (node.buttons||[]).forEach((b, idx) => btns.appendChild(renderButtonRow(id, b, idx)));
+      const add = document.createElement('button'); add.className='addRow'; add.textContent='+ Añadir botón';
+      add.onclick = () => { addButton(id); };
+      btns.appendChild(add);
+      el.appendChild(btns);
+
+      return el;
+    }
+
+    function renderButtonRow(nodeId, b, idx){
+      const row = document.createElement('div'); row.className='row';
+      const title = document.createElement('input'); title.placeholder='Título'; title.value = b.title || '';
+      title.oninput = () => { flow.nodes[nodeId].buttons[idx].title = title.value; refresh(); };
+
+      const type = document.createElement('select');
+      type.innerHTML = '<option value="next">next</option><option value="id">id</option>';
+      type.value = b.next ? 'next' : 'id';
+      type.onchange = () => {
+        if (type.value === 'next') { flow.nodes[nodeId].buttons[idx] = { title: title.value, next: Object.keys(flow.nodes)[0] || null }; }
+        else { flow.nodes[nodeId].buttons[idx] = { title: title.value, id: '' }; }
+        refresh();
+      };
+
+      const value = document.createElement('select');
+      const valueId = document.createElement('input'); valueId.placeholder='ID acción (ej. VER_PAGOS)';
+      function syncValueInputs(){
+        const isNext = type.value === 'next';
+        value.style.display = isNext ? 'block' : 'none';
+        valueId.style.display = isNext ? 'none' : 'block';
+      }
+      // Setup value (next)
+      Object.keys(flow.nodes).forEach(id => { const o=document.createElement('option'); o.value=id; o.textContent=id; value.appendChild(o); });
+      if (b.next) value.value = b.next; value.onchange = () => { flow.nodes[nodeId].buttons[idx].next = value.value; refresh(); };
+      // Setup value (id)
+      if (b.id) valueId.value = b.id; valueId.oninput = () => { flow.nodes[nodeId].buttons[idx].id = valueId.value.trim(); };
+
+      const del = document.createElement('button'); del.className='delbtn'; del.textContent='Quitar';
+      del.onclick = () => { removeButton(nodeId, idx); };
+
+      row.appendChild(title); row.appendChild(type); row.appendChild(value); row.appendChild(valueId); row.appendChild(del);
+      syncValueInputs();
+      return row;
+    }
+
+    function addNode(){
+      const id = uid('node');
+      flow.nodes[id] = { text: '', buttons: [] };
+      if (!flow.start_node) flow.start_node = id;
+      refresh();
+    }
+    function deleteNode(id){
+      if (!flow.nodes[id]) return;
+      if (!confirm('¿Eliminar nodo '+id+'?')) return;
+      delete flow.nodes[id];
+      if (flow.start_node === id) flow.start_node = Object.keys(flow.nodes)[0] || null;
+      // Quitar referencias next a este nodo
+      for (const k of Object.keys(flow.nodes)) {
+        const btns = flow.nodes[k].buttons||[];
+        btns.forEach(b => { if (b.next === id) delete b.next; });
+      }
+      refresh();
+    }
+    function renameNode(oldId, newId){
+      if (!newId || newId===oldId || flow.nodes[newId]) { drawEdges(); return; }
+      flow.nodes[newId] = flow.nodes[oldId]; delete flow.nodes[oldId];
+      if (flow.start_node===oldId) flow.start_node=newId;
+      for (const k of Object.keys(flow.nodes)) {
+        (flow.nodes[k].buttons||[]).forEach(b => { if (b.next===oldId) b.next=newId; });
+      }
+      refresh();
+    }
+    function addButton(nodeId){
+      const arr = flow.nodes[nodeId].buttons || (flow.nodes[nodeId].buttons=[]);
+      if (arr.length >= FLOW_LIMIT) { alert('Máximo '+FLOW_LIMIT+' botones.'); return; }
+      const first = Object.keys(flow.nodes)[0] || null;
+      arr.push({ title: 'Opción', next: first });
+      refresh();
+    }
+    function removeButton(nodeId, idx){
+      const arr = flow.nodes[nodeId].buttons||[];
+      arr.splice(idx, 1); refresh();
+    }
+
+    function refresh(){
+      renderAll();
+    }
+
+    startNodeSel.addEventListener('change', () => {
+      flow.start_node = startNodeSel.value || null; drawEdges();
+    });
+
+    function drawEdges(){
+      // Limpia
+      linesSvg.innerHTML = '<defs><marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#8a8aa8" /></marker></defs>';
+      // Recalcular posiciones
+      const nodeCards = Array.from(document.querySelectorAll('.node'));
+      const pos = {};
+      nodeCards.forEach(card => {
+        const id = card.dataset.nodeId;
+        const r = card.getBoundingClientRect();
+        const host = nodesEl.getBoundingClientRect();
+        pos[id] = { x: r.left - host.left, y: r.top - host.top, w: r.width, h: r.height };
+      });
+      // Pintar líneas next
+      Object.entries(flow.nodes).forEach(([id, node]) => {
+        (node.buttons||[]).forEach(b => {
+          if (!b.next || !pos[id] || !pos[b.next]) return;
+          const a = pos[id]; const z = pos[b.next];
+          const x1 = a.x + a.w; const y1 = a.y + a.h/2;
+          const x2 = z.x; const y2 = z.y + z.h/2;
+          const path = document.createElementNS('http://www.w3.org/2000/svg','path');
+          const mx = (x1 + x2)/2;
+          const d = `M ${x1} ${y1} C ${mx} ${y1}, ${mx} ${y2}, ${x2} ${y2}`;
+          path.setAttribute('d', d); path.setAttribute('class','edge');
+          linesSvg.appendChild(path);
+        });
+      });
+    }
+
+    function saveFlow(){
+      // Normalizar botones a solo next o id
+      for (const k of Object.keys(flow.nodes)) {
+        flow.nodes[k].buttons = (flow.nodes[k].buttons||[]).slice(0, FLOW_LIMIT).map(b => {
+          const out = { title: b.title||'Opción' };
+          if (b.next) out.next = b.next; else if (b.id) out.id = b.id.trim();
+          return out;
+        });
+      }
+      const payload = JSON.stringify(flow, null, 2);
+      document.getElementById('contentField').value = payload;
+      document.getElementById('saveForm').submit();
+    }
+
+    function reloadFromServer(){
+      window.location.reload();
+    }
+
+    // Primer render
+    renderAll();
+    window.addEventListener('resize', drawEdges);
+  </script>
+</body>
+</html>
