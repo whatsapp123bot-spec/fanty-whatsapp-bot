@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Fanty — Vista previa</title>
+    <style>
+        body {
+            background-color: #e5ddd5;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            font-family: Arial, sans-serif;
+        }
+        .chat-container {
+            width: 360px;
+            height: 600px;
+            background-color: #fff;
+            border-radius: 20px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+        }
+        .chat-header {
+            background-color: #075e54;
+            color: white;
+            padding: 15px;
+            font-weight: bold;
+        }
+        .messages {
+            flex: 1;
+            padding: 15px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            background: url('data:image/svg+xml,%3Csvg width="160" height="80" xmlns="http://www.w3.org/2000/svg"%3E%3Crect fill="%23f6f6f6" width="160" height="80"/%3E%3C/svg%3E');
+        }
+        .user, .bot {
+            max-width: 80%;
+            padding: 10px;
+            border-radius: 10px;
+            line-height: 1.3;
+        }
+        .user {
+            background-color: #dcf8c6;
+            align-self: flex-end;
+        }
+        .bot {
+            background-color: #f1f0f0;
+            align-self: flex-start;
+        }
+        .input-container {
+            display: flex;
+            padding: 10px;
+            border-top: 1px solid #ccc;
+            background-color: #fafafa;
+        }
+        input[type="text"] {
+            flex: 1;
+            padding: 10px;
+            border-radius: 20px;
+            border: 1px solid #ccc;
+            outline: none;
+        }
+        button {
+            margin-left: 10px;
+            background-color: #128c7e;
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        .quick-replies { display:flex; gap:8px; padding: 0 10px 10px; flex-wrap: wrap; }
+    </style>
+</head>
+<body>
+    <div class="chat-container">
+        <div class="chat-header">💋 Fanty - Vista previa</div>
+        <div class="messages" id="messages">
+            <div class="bot">👋 ¡Hola! Soy tu asistente virtual.</div>
+        </div>
+        <div class="quick-replies" id="quickReplies"></div>
+        <div class="input-container">
+            <input type="text" id="messageInput" placeholder="Escribe un mensaje..." />
+            <button id="sendBtn" title="Enviar">➤</button>
+        </div>
+    </div>
+
+    <script>
+        const input = document.getElementById('messageInput');
+        const messagesDiv = document.getElementById('messages');
+        const sendBtn = document.getElementById('sendBtn');
+        const quickReplies = document.getElementById('quickReplies');
+
+        function renderQuickReplies(options) {
+            quickReplies.innerHTML = '';
+            if (!options || !Array.isArray(options) || options.length === 0) {
+                quickReplies.style.display = 'none';
+                return;
+            }
+            quickReplies.style.display = 'flex';
+            for (const opt of options) {
+                const b = document.createElement('button');
+                b.textContent = opt.title;
+                b.style.background = '#e1f3f0';
+                b.style.color = '#075e54';
+                b.style.borderRadius = '16px';
+                b.style.padding = '6px 10px';
+                b.style.height = 'auto';
+                b.style.width = 'auto';
+                b.style.fontSize = '14px';
+                b.style.cursor = 'pointer';
+                b.addEventListener('click', () => sendPayload(opt.payload, opt.title));
+                quickReplies.appendChild(b);
+            }
+        }
+
+        function appendBotMessage(data) {
+            const botMsg = document.createElement('div');
+            botMsg.classList.add('bot');
+            if (data.response_html) {
+                botMsg.innerHTML = data.response_html;
+            } else {
+                botMsg.textContent = data.response || '❓ Respuesta vacía';
+            }
+            messagesDiv.appendChild(botMsg);
+            renderQuickReplies(data.options);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        async function sendMessage() {
+            const userText = input.value.trim();
+            if (!userText) return;
+
+            const userMsg = document.createElement('div');
+            userMsg.classList.add('user');
+            userMsg.textContent = userText;
+            messagesDiv.appendChild(userMsg);
+
+            try {
+                const res = await fetch('/send_message', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: `message=${encodeURIComponent(userText)}`
+                });
+                const data = await res.json();
+                appendBotMessage(data);
+            } catch (err) {
+                appendBotMessage({ response: '⚠️ Error al contactar el servidor' });
+            }
+
+            input.value = '';
+        }
+
+        async function sendPayload(payload, titleShown) {
+            const userMsg = document.createElement('div');
+            userMsg.classList.add('user');
+            userMsg.textContent = titleShown || 'Opción';
+            messagesDiv.appendChild(userMsg);
+
+            try {
+                const res = await fetch('/send_message', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: `payload=${encodeURIComponent(payload)}`
+                });
+                const data = await res.json();
+                appendBotMessage(data);
+            } catch (err) {
+                appendBotMessage({ response: '⚠️ Error al contactar el servidor' });
+            }
+        }
+
+        sendBtn.addEventListener('click', sendMessage);
+        input.addEventListener('keydown', (e) => { if (e.key === 'Enter') sendMessage(); });
+    </script>
+</body>
+</html>

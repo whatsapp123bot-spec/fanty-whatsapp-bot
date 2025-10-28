@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Fanty — Panel</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin:0; background:#f6f7fb; color:#222; display:flex; flex-direction: column; min-height:100vh; }
+        header { background:#5b2a86; color:white; padding:20px; text-align:center; }
+        main { flex:1; display:flex; align-items: center; justify-content: center; }
+    </style>
+</head>
+<body>
+        <header>
+            <h1>💋 Fanty — Panel</h1>
+            <p>Simulador tipo WhatsApp + Carga de catálogos</p>
+        </header>
+        <main>
+            <div class="cards" style="display:grid;grid-template-columns: repeat(auto-fit, minmax(260px,1fr)); gap:16px; width: 90vw; max-width: 900px;">
+                <div class="card" style="background:white; border-radius:12px; padding:20px; box-shadow: 0 6px 16px rgba(0,0,0,0.08);">
+                    <h2>Vista previa del chat</h2>
+                    <p>Prueba el flujo del bot como si fueras un cliente. Escribe “hola/holi” para ver los botones.</p>
+                    <a href="/chat" class="btn preview" style="display:inline-block;padding:10px 16px;border-radius:8px;text-decoration:none;color:white;font-weight:600;background:#128c7e;">🟢 Abrir vista previa</a>
+                </div>
+                <div class="card" style="background:white; border-radius:12px; padding:20px; box-shadow: 0 6px 16px rgba(0,0,0,0.08);">
+                    <h2>Agregar catálogos</h2>
+                    <p>Sube los PDFs para Disfraz Sexy, Lencería y Mallas. El bot enviará estos archivos en el chat.</p>
+                    <a href="/admin" class="btn admin" style="display:inline-block;padding:10px 16px;border-radius:8px;text-decoration:none;color:white;font-weight:600;background:#7a00f0;">🟣 Agregar catálogos</a>
+                </div>
+            </div>
+            <div class="status" style="margin-top:12px; font-size:14px; color:#555; text-align:center;">
+                <p>Consejo: primero sube tus catálogos PDF en “Agregar catálogos”, luego pruébalos en “Vista previa del chat”.</p>
+            </div>
+        </main>
+
+    <script>
+        const input = document.getElementById('messageInput');
+        const messagesDiv = document.getElementById('messages');
+        const sendBtn = document.getElementById('sendBtn');
+
+        function renderQuickReplies(options) {
+            const qr = document.getElementById('quickReplies');
+            qr.innerHTML = '';
+            if (!options || !Array.isArray(options) || options.length === 0) {
+                qr.style.display = 'none';
+                return;
+            }
+            qr.style.display = 'flex';
+            for (const opt of options) {
+                const b = document.createElement('button');
+                b.textContent = opt.title;
+                b.style.background = '#e1f3f0';
+                b.style.color = '#075e54';
+                b.style.borderRadius = '16px';
+                b.style.padding = '6px 10px';
+                b.style.height = 'auto';
+                b.style.width = 'auto';
+                b.style.fontSize = '14px';
+                b.style.cursor = 'pointer';
+                b.addEventListener('click', () => sendPayload(opt.payload, opt.title));
+                qr.appendChild(b);
+            }
+        }
+
+        async function sendMessage() {
+            const userText = input.value.trim();
+            if (!userText) return;
+
+            // Mensaje del usuario
+            const userMsg = document.createElement('div');
+            userMsg.classList.add('user');
+            userMsg.textContent = userText;
+            messagesDiv.appendChild(userMsg);
+
+            // Llamada al servidor Flask
+            try {
+                const res = await fetch('/send_message', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: `message=${encodeURIComponent(userText)}`
+                });
+                const data = await res.json();
+
+                const botMsg = document.createElement('div');
+                botMsg.classList.add('bot');
+                botMsg.textContent = data.response || '❓ Respuesta vacía';
+                messagesDiv.appendChild(botMsg);
+
+                renderQuickReplies(data.options);
+            } catch (err) {
+                const botMsg = document.createElement('div');
+                botMsg.classList.add('bot');
+                botMsg.textContent = '⚠️ Error al contactar el servidor';
+                messagesDiv.appendChild(botMsg);
+            }
+
+            input.value = '';
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        sendBtn.addEventListener('click', sendMessage);
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') sendMessage();
+        });
+
+        async function sendPayload(payload, titleShown) {
+            // Mostrar el botón elegido como mensaje del usuario
+            const userMsg = document.createElement('div');
+            userMsg.classList.add('user');
+            userMsg.textContent = titleShown || 'Opción';
+            messagesDiv.appendChild(userMsg);
+
+            try {
+                const res = await fetch('/send_message', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: `payload=${encodeURIComponent(payload)}`
+                });
+                const data = await res.json();
+                const botMsg = document.createElement('div');
+                botMsg.classList.add('bot');
+                botMsg.textContent = data.response || '❓ Respuesta vacía';
+                messagesDiv.appendChild(botMsg);
+                // Tras seleccionar opción, ocultar quick replies a menos que vengan nuevas
+                renderQuickReplies(data.options);
+            } catch (err) {
+                const botMsg = document.createElement('div');
+                botMsg.classList.add('bot');
+                botMsg.textContent = '⚠️ Error al contactar el servidor';
+                messagesDiv.appendChild(botMsg);
+            }
+
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+    </script>
+</body>
+</html>
