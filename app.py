@@ -1,4 +1,5 @@
 import os
+import requests
 from flask import Flask, request, render_template, jsonify, redirect, url_for, flash
 from werkzeug.utils import secure_filename
 
@@ -10,6 +11,11 @@ CATALOG_DIR = os.path.join(BASE_DIR, 'static', 'catalogos')
 os.makedirs(CATALOG_DIR, exist_ok=True)
 
 ALLOWED_EXTENSIONS = {'.pdf'}
+
+# Variables de entorno para WhatsApp Cloud API
+VERIFY_TOKEN = os.getenv("VERIFY_TOKEN", "fantasia123")
+WHATSAPP_TOKEN = os.getenv("WHATSAPP_TOKEN")
+PHONE_NUMBER_ID = os.getenv("PHONE_NUMBER_ID")
 
 @app.route('/')
 def home():
@@ -24,12 +30,56 @@ def chat():
 
 @app.route('/webhook', methods=['GET', 'POST'])
 def webhook():
+    """Endpoint para verificación de Meta y recepción de mensajes de WhatsApp Cloud API."""
     if request.method == 'GET':
-        return "Webhook conectado correctamente (GET)."
-    if request.method == 'POST':
-        data = request.get_json()
-        print("📩 Mensaje recibido:", data)
-        return "Mensaje recibido", 200
+        token = request.args.get('hub.verify_token')
+        challenge = request.args.get('hub.challenge')
+        if token == VERIFY_TOKEN and challenge is not None:
+            return challenge
+        return 'Token incorrecto', 403
+
+    # POST
+    data = request.get_json(silent=True) or {}
+    try:
+        if 'entry' in data:
+            for entry in data.get('entry', []):
+                for change in entry.get('changes', []):
+                    value = change.get('value', {})
+                    messages = value.get('messages')
+                    if messages:
+                        message = messages[0]
+                        from_wa = message.get('from')
+                        text = message.get('text', {}).get('body', '')
+                        if from_wa and text:
+                            send_whatsapp_text(from_wa, f"👋 Hola, soy Fanty. Recibí tu mensaje: {text}")
+    except Exception as e:
+        # No romper el webhook ante payloads inesperados
+        print('Error procesando webhook:', e)
+    return 'ok', 200
+
+
+def send_whatsapp_text(to: str, body: str) -> None:
+    """Envía un mensaje de texto usando WhatsApp Cloud API."""
+    if not WHATSAPP_TOKEN or not PHONE_NUMBER_ID:
+        print('WHATSAPP_TOKEN o PHONE_NUMBER_ID no configurados; omitiendo envío.')
+        return
+    url = f"https://graph.facebook.com/v19.0/{PHONE_NUMBER_ID}/messages"
+    headers = {
+        "Authorization": f"Bearer {WHATSAPP_TOKEN}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "messaging_product": "whatsapp",
+        "to": to,
+        "type": "text",
+        "text": {"body": body},
+    }
+    try:
+        resp = requests.post(url, headers=headers, json=payload, timeout=10)
+        if resp.status_code >= 400:
+            print('Error enviando mensaje WA:', resp.status_code, resp.text)
+    except Exception as e:
+        print('Excepción enviando mensaje WA:', e)
 
 
 @app.route('/send_message', methods=['POST'])
