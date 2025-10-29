@@ -360,12 +360,44 @@ def get_user_flow_node(wa_id: str) -> str | None:
         return None
 
 
-def has_active_flow(wa_id: str, window_sec: int = 15*60) -> bool:
-    """Considera activo SOLO si users.flow_node apunta a un nodo existente."""
+def has_active_flow(wa_id: str, window_sec: int = 180) -> bool:
+    """Flujo activo si:
+    - users.flow_node existe y
+    - hubo un mensaje interactivo (menú/botones) de salida reciente (<= window_sec)
+    Si es obsoleto, limpia flow_node y retorna False.
+    """
     try:
         node = get_user_flow_node(wa_id)
-        if node and node in ((FLOW_CONFIG or {}).get('nodes') or {}):
+        if not node:
+            return False
+        if node not in ((FLOW_CONFIG or {}).get('nodes') or {}):
+            # Nodo ya no existe, limpiar
+            try:
+                db_execute("UPDATE users SET flow_node=NULL WHERE wa_id=?", (wa_id,))
+            except Exception:
+                pass
+            return False
+        # Verificar recencia de UI de botones
+        row = db_execute(
+            "SELECT ts FROM messages WHERE wa_id=? AND direction='out' AND mtype='interactive' ORDER BY ts DESC, id DESC LIMIT 1",
+            (wa_id,), fetch='one'
+        )
+        ts = (row.get('ts') if isinstance(row, dict) else (row[0] if row else 0)) or 0
+        if not ts:
+            # Si no hubo interactivo reciente, no mantener bloqueo; limpiar para permitir nuevos triggers
+            try:
+                db_execute("UPDATE users SET flow_node=NULL WHERE wa_id=?", (wa_id,))
+            except Exception:
+                pass
+            return False
+        now = int(time.time())
+        if (now - int(ts)) <= max(30, int(window_sec)):
             return True
+        # Stale: limpiar para permitir nuevos inicios
+        try:
+            db_execute("UPDATE users SET flow_node=NULL WHERE wa_id=?", (wa_id,))
+        except Exception:
+            pass
     except Exception:
         pass
     return False
