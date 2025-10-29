@@ -26,3 +26,9 @@ services:
         value: "1"
       - key: PREFER_ENV_WHATSAPP
         value: "1"
+      - key: AI_ENABLED
+        value: "0"
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: OPENROUTER_MODEL
+        value: "openrouter/auto"

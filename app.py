@@ -43,6 +43,11 @@ WHATSAPP_TOKEN = os.getenv("WHATSAPP_TOKEN")
 PHONE_NUMBER_ID = os.getenv("PHONE_NUMBER_ID")
 PREFER_ENV_WHATSAPP = os.getenv("PREFER_ENV_WHATSAPP", "0") == "1"
 
+# IA (OpenRouter)
+AI_ENABLED = os.getenv("AI_ENABLED", "0") == "1"
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
+OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "openrouter/auto")
+
 # URLs de negocio (configurables por entorno, con valores por defecto actuales)
 STORE_URL = os.getenv("STORE_URL", "https://lenceria-fantasia-intima.onrender.com/")
 WHATSAPP_ADVISOR_URL = os.getenv("WHATSAPP_ADVISOR_URL", "https://wa.me/51932187068")
@@ -721,6 +726,7 @@ def webhook():
                                 greetings = ("hola", "holi", "buenas", "buenos días", "buenas tardes", "buenas noches")
                                 flow_nodes = (FLOW_CONFIG or {}).get('nodes') or {}
                                 flow_enabled = (FLOW_CONFIG or {}).get('enabled', True)
+                                responded = False
                                 if flow_enabled and flow_nodes:
                                     matched_node = None
                                     try:
@@ -753,11 +759,23 @@ def webhook():
                                         matched_node = None
                                     if matched_node:
                                         send_flow_node(from_wa, matched_node)
+                                        responded = True
                                     elif FLOW_CONFIG.get('start_node'):
                                         # Fallback: si hay start_node definido, envíalo ante cualquier texto
                                         # para asegurar una primera respuesta incluso sin saludo/keywords.
                                         send_flow_node(from_wa, FLOW_CONFIG.get('start_node'))
+                                        responded = True
                                     # Si no hay start_node, no respondemos (flujo gestionado por panel)
+                                # Si no respondió el flujo, y hay IA activa, usar IA como fallback
+                                try:
+                                    if not responded and AI_ENABLED:
+                                        ai_text = ai_generate_reply(from_wa, text or low)
+                                        if ai_text:
+                                            send_whatsapp_text(from_wa, ai_text)
+                                            responded = True
+                                except Exception:
+                                    pass
+                                # Si nada respondió, no hacemos nada (silencio)
                             elif msg_type == 'interactive':
                                 interactive = message.get('interactive', {})
                                 itype = interactive.get('type')
@@ -859,6 +877,81 @@ def send_whatsapp_text(to: str, body: str):
         "text": {"body": body},
     }
     return _post_wa(payload)
+
+
+def _get_recent_messages_for_ai(wa_id: str, limit: int = 12):
+    """Recupera últimos mensajes para dar contexto a la IA (user/assistant)."""
+    try:
+        rows = db_execute(
+            "SELECT direction, body, ts FROM messages WHERE wa_id=? ORDER BY ts DESC, id DESC LIMIT ?",
+            (wa_id, limit), fetch='all') or []
+        msgs = []
+        # invertir a cronológico
+        it = rows[::-1]
+        for r in it:
+            if isinstance(r, dict):
+                direction = (r.get('direction') or '').lower()
+                body = r.get('body') or ''
+            else:
+                direction = (r[0] or '').lower()
+                body = r[1] or ''
+            role = 'assistant' if direction == 'out' else 'user'
+            if body:
+                msgs.append({"role": role, "content": body})
+        return msgs
+    except Exception:
+        return []
+
+
+def ai_generate_reply(wa_id: str, user_text: str) -> str:
+    """Llama a OpenRouter para generar una respuesta. Retorna texto o mensaje por defecto."""
+    if not (AI_ENABLED and OPENROUTER_API_KEY):
+        return ""
+    try:
+        system_prompt = (
+            "Eres 'Fanty', una asistente de WhatsApp amable y concisa para una tienda de lencería. "
+            "Ayuda a clientes en español latino, ofrece sugerencias y guía hacia la tienda y métodos de pago/envío. "
+            f"La tienda es: {STORE_URL}. Si piden hablar con humana, sugiere el botón correspondiente o di que puedes transferir. "
+            "Sé breve (2-4 frases) y evita URLs si no vienen al caso."
+        )
+        messages = [{"role": "system", "content": system_prompt}]
+        ctx = _get_recent_messages_for_ai(wa_id, limit=12)
+        messages.extend(ctx)
+        # Asegurar último input
+        if user_text and (not ctx or (ctx and (ctx[-1].get('content') or '').strip() != user_text.strip())):
+            messages.append({"role": "user", "content": user_text})
+        url = "https://openrouter.ai/api/v1/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+            "Content-Type": "application/json",
+            "HTTP-Referer": os.getenv('OPENROUTER_SITE_URL', STORE_URL) or "",
+            "X-Title": os.getenv('OPENROUTER_APP_NAME', 'Fanty WhatsApp Bot'),
+        }
+        body = {
+            "model": OPENROUTER_MODEL,
+            "messages": messages,
+            "temperature": 0.5,
+            "max_tokens": 300,
+        }
+        resp = requests.post(url, headers=headers, json=body, timeout=12)
+        if resp.status_code >= 200 and resp.status_code < 300:
+            data = resp.json()
+            choices = (data or {}).get('choices') or []
+            if choices:
+                content = ((choices[0].get('message') or {}).get('content') or '').strip()
+                return content[:1800]
+        else:
+            try:
+                print('IA error:', resp.status_code, resp.text)
+            except Exception:
+                pass
+        return ""
+    except Exception as e:
+        try:
+            print('Excepción IA:', e)
+        except Exception:
+            pass
+        return ""
 
 
 def _post_wa(payload: dict):
@@ -1468,6 +1561,9 @@ def send_message():
         greetings = ("hola", "holi", "buenas", "buenos días", "buenas tardes", "buenas noches")
         if (FLOW_CONFIG or {}).get('start_node') and any(g in low for g in greetings):
             return jsonify(_build_preview_response_for_node(FLOW_CONFIG.get('start_node')))
+    # Fallback de IA en vista previa (texto informativo; no llama a la API real)
+    if AI_ENABLED:
+        return jsonify({'response': '🤖 (IA) No hubo match en el flujo. La IA respondería al usuario en WhatsApp.'})
     return jsonify({'response': '🤖 No hay un match en el flujo para tu mensaje.'})
 
 
@@ -1495,6 +1591,8 @@ def internal_health():
         "db_backend": "postgres" if DB_IS_POSTGRES else "sqlite",
         "bridge_url": BRIDGE_URL,
         "prefer_env_whatsapp": PREFER_ENV_WHATSAPP,
+        "ai_enabled": AI_ENABLED,
+        "openrouter_model": OPENROUTER_MODEL if AI_ENABLED else None,
     }
     # Intentar consultar suscripciones (si hay token y phone_number_id)
     if WHATSAPP_TOKEN and PHONE_NUMBER_ID:
