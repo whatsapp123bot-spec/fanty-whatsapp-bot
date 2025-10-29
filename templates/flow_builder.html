@@ -50,6 +50,7 @@
   .connector:hover { background:#e7dbff; }
   .inlet { width:10px; height:10px; border-radius:50%; border:2px solid #8a8aa8; background:#fff; display:inline-block; margin-right:6px; }
   .preview { stroke:#7444a8; stroke-width:2; fill:none; stroke-dasharray:4 4; }
+  .edge.selected { stroke:#7444a8 !important; stroke-width:3 !important; }
   .start-connector { position:absolute; bottom:10px; right:10px; width:14px; height:14px; border-radius:50%; border:2px solid #7444a8; background:#fff; }
   .start-connector:hover { background:#e7dbff; }
   /* Conector de nodo acción (para flujos sin botones) */
@@ -107,6 +108,7 @@
       <p class="legend">Tips:
         <br>• Arrastra el circulito hacia otra caja para conectar ese botón.
         <br>• Las flechas aparecen solo cuando el botón está conectado a otro nodo.
+        <br>• Haz clic sobre una flecha para eliminar esa conexión.
       </p>
     </aside>
 
@@ -259,6 +261,11 @@
   const inlet = document.createElement('span'); inlet.className='inlet'; inlet.title='Entrada de conexiones';
   head.appendChild(inlet);
   head.appendChild(title);
+    // Botón duplicar
+    const dupBtn = document.createElement('button'); dupBtn.className='btn reload'; dupBtn.style.background='#6f42c1'; dupBtn.style.padding='4px 8px'; dupBtn.style.fontSize='12px'; dupBtn.textContent='Duplicar';
+    dupBtn.title = 'Crear una copia de esta cajita';
+    dupBtn.onclick = (e) => { e.preventDefault(); duplicateNode(id); };
+    head.appendChild(dupBtn);
       const tBadge = document.createElement('span'); tBadge.className = 'type-badge'; tBadge.textContent = (node.type||'action'); head.appendChild(tBadge);
       if (flow.start_node === id) {
         const badge = document.createElement('span'); badge.textContent='inicio'; badge.className='start'; head.appendChild(badge);
@@ -399,6 +406,19 @@
 
     function openAddNodeMenu(){ overlay.style.display='flex'; }
     function closeAddNodeMenu(){ overlay.style.display='none'; }
+    function duplicateNode(origId){
+      if (!flow.nodes[origId]) return;
+      const baseId = origId + '_copy';
+      const newId = uid(baseId);
+      // Clonar a mano para evitar referencias compartidas
+      const orig = flow.nodes[origId];
+      const copy = JSON.parse(JSON.stringify(orig));
+      // Nueva posición desplazada
+      const p = orig.pos || { x: 40, y: 40 };
+      copy.pos = { x: (p.x||0) + 30, y: (p.y||0) + 30 };
+      flow.nodes[newId] = copy;
+      refresh();
+    }
     function addNodeOfType(type){
       const id = uid(type==='advisor'?'advisor':(type==='trigger'?'trigger':'node'));
       const base = { type: type||'action', text: '', buttons: [], pos: null };
@@ -512,6 +532,9 @@
           path.setAttribute('stroke','#8a8aa8');
           path.setAttribute('stroke-width','2');
           path.setAttribute('marker-end','url(#arrow)');
+          path.dataset.edge = 'btn';
+          path.dataset.src = id;
+          path.dataset.idx = String(idx);
           linesSvg.appendChild(path);
         });
   // Edge desde nodo start (si existe next)
@@ -521,7 +544,10 @@
           const x1 = p1.x, y1 = p1.y; const x2 = p2.x, y2 = p2.y;
           const path = document.createElementNS('http://www.w3.org/2000/svg','path');
           const mx = (x1 + x2)/2; const d = `M ${x1} ${y1} C ${mx} ${y1}, ${mx} ${y2}, ${x2} ${y2}`;
-          path.setAttribute('d', d); path.setAttribute('class','edge'); path.setAttribute('fill','none'); path.setAttribute('stroke','#8a8aa8'); path.setAttribute('stroke-width','2'); path.setAttribute('marker-end','url(#arrow)'); linesSvg.appendChild(path);
+          path.setAttribute('d', d); path.setAttribute('class','edge'); path.setAttribute('fill','none'); path.setAttribute('stroke','#8a8aa8'); path.setAttribute('stroke-width','2'); path.setAttribute('marker-end','url(#arrow)');
+          path.dataset.edge = 'start';
+          path.dataset.src = id;
+          linesSvg.appendChild(path);
         }
         // Edge desde nodo trigger (si existe next)
         if ((node.type||'action') === 'trigger' && node.next && startConnPos[id] && inletPos[node.next]) {
@@ -530,7 +556,10 @@
           const x1 = p1.x, y1 = p1.y; const x2 = p2.x, y2 = p2.y;
           const path = document.createElementNS('http://www.w3.org/2000/svg','path');
           const mx = (x1 + x2)/2; const d = `M ${x1} ${y1} C ${mx} ${y1}, ${mx} ${y2}, ${x2} ${y2}`;
-          path.setAttribute('d', d); path.setAttribute('class','edge'); path.setAttribute('fill','none'); path.setAttribute('stroke','#8a8aa8'); path.setAttribute('stroke-width','2'); path.setAttribute('marker-end','url(#arrow)'); linesSvg.appendChild(path);
+          path.setAttribute('d', d); path.setAttribute('class','edge'); path.setAttribute('fill','none'); path.setAttribute('stroke','#8a8aa8'); path.setAttribute('stroke-width','2'); path.setAttribute('marker-end','url(#arrow)');
+          path.dataset.edge = 'trigger';
+          path.dataset.src = id;
+          linesSvg.appendChild(path);
         }
         // Edge desde nodo action (si existe next)
         if ((node.type||'action') === 'action' && node.next && nodeConnPos[id] && inletPos[node.next]) {
@@ -539,7 +568,10 @@
           const x1 = p1.x, y1 = p1.y; const x2 = p2.x, y2 = p2.y;
           const path = document.createElementNS('http://www.w3.org/2000/svg','path');
           const mx = (x1 + x2)/2; const d = `M ${x1} ${y1} C ${mx} ${y1}, ${mx} ${y2}, ${x2} ${y2}`;
-          path.setAttribute('d', d); path.setAttribute('class','edge'); path.setAttribute('fill','none'); path.setAttribute('stroke','#8a8aa8'); path.setAttribute('stroke-width','2'); path.setAttribute('marker-end','url(#arrow)'); linesSvg.appendChild(path);
+          path.setAttribute('d', d); path.setAttribute('class','edge'); path.setAttribute('fill','none'); path.setAttribute('stroke','#8a8aa8'); path.setAttribute('stroke-width','2'); path.setAttribute('marker-end','url(#arrow)');
+          path.dataset.edge = 'node';
+          path.dataset.src = id;
+          linesSvg.appendChild(path);
         }
       });
     }
@@ -706,6 +738,28 @@
       clearTimeout(window.__toastTimer);
       window.__toastTimer = setTimeout(() => { t.style.display = 'none'; }, 2000);
     }
+
+    // Click en flechas para eliminar conexión
+    linesSvg.addEventListener('click', (e) => {
+      const el = e.target;
+      if (!(el instanceof SVGPathElement)) return;
+      const type = el.dataset?.edge;
+      if (!type) return;
+      e.stopPropagation();
+      const src = el.dataset.src;
+      if (!src || !flow.nodes[src]) return;
+      let msg = '¿Eliminar esta conexión?';
+      if (!confirm(msg)) return;
+      if (type === 'btn') {
+        const idx = parseInt(el.dataset.idx||'-1', 10);
+        if (!isNaN(idx) && flow.nodes[src].buttons && flow.nodes[src].buttons[idx]) {
+          delete flow.nodes[src].buttons[idx].next;
+        }
+      } else if (type === 'start' || type === 'trigger' || type === 'node') {
+        delete flow.nodes[src].next;
+      }
+      refresh();
+    });
 
     function updateStatusChip(){
       const chip = document.getElementById('statusChip');
