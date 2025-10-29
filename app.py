@@ -42,7 +42,9 @@ if CLOUDINARY_URL and cloudinary:
 VERIFY_TOKEN = os.getenv("VERIFY_TOKEN", "fantasia123")
 WHATSAPP_TOKEN = os.getenv("WHATSAPP_TOKEN")
 PHONE_NUMBER_ID = os.getenv("PHONE_NUMBER_ID")
-PREFER_ENV_WHATSAPP = os.getenv("PREFER_ENV_WHATSAPP", "0") == "1"
+# Control de credenciales: por defecto, solo desde Admin (DB), sin usar ENV para envíos
+WHATSAPP_DB_ONLY = os.getenv("WHATSAPP_DB_ONLY", "1") == "1"
+PREFER_ENV_WHATSAPP = os.getenv("PREFER_ENV_WHATSAPP", "0") == "1"  # legacy; ignorado si WHATSAPP_DB_ONLY=1
 
 # IA (OpenRouter)
 AI_ENABLED = os.getenv("AI_ENABLED", "0") == "1"
@@ -140,6 +142,8 @@ def init_accounts_db():
 def ensure_default_account_from_env():
     """Si no hay cuentas, crea una por defecto usando las variables de entorno actuales."""
     try:
+        if WHATSAPP_DB_ONLY:
+            return  # No auto-crear cuentas desde ENV cuando operamos solo con Admin/DB
         row = db_execute("SELECT COUNT(1) AS c FROM accounts", (), fetch='one')
         cnt = (row.get('c') if isinstance(row, dict) else (row[0] if row else 0)) if row is not None else 0
         if cnt == 0 and PHONE_NUMBER_ID and WHATSAPP_TOKEN:
@@ -227,7 +231,12 @@ def upsert_account(label: str, phone_number_id: str, whatsapp_token: str, verify
 
 def delete_account(account_id: int):
     try:
-        db_execute("DELETE FROM accounts WHERE id=?", (account_id,))
+        # Desasociar usuarios atados a esta cuenta antes de eliminarla
+        try:
+            db_execute("UPDATE users SET account_id=NULL WHERE account_id=\?", (account_id,))
+        except Exception:
+            pass
+        db_execute("DELETE FROM accounts WHERE id=\?", (account_id,))
         return True
     except Exception as e:
         print('⚠️ delete_account error:', e); return False
@@ -1049,8 +1058,8 @@ def ai_generate_reply(wa_id: str, user_text: str) -> str:
 
 def _post_wa(payload: dict):
     """Helper para enviar payloads con la cuenta activa de la request, del usuario, o por defecto."""
-    # Si se pide priorizar credenciales del entorno (Render), usarlas directamente
-    if PREFER_ENV_WHATSAPP and PHONE_NUMBER_ID and WHATSAPP_TOKEN:
+    # Si está permitido usar ENV y se pide priorizarlo explícitamente (modo legacy)
+    if (not WHATSAPP_DB_ONLY) and PREFER_ENV_WHATSAPP and PHONE_NUMBER_ID and WHATSAPP_TOKEN:
         pnid = PHONE_NUMBER_ID
         token = WHATSAPP_TOKEN
         url = f"https://graph.facebook.com/v19.0/{pnid}/messages"
@@ -1100,11 +1109,11 @@ def _post_wa(payload: dict):
             acc = None
     if not acc:
         acc = get_default_account()
-    pnid = (acc or {}).get('phone_number_id') or PHONE_NUMBER_ID
-    token = (acc or {}).get('whatsapp_token') or WHATSAPP_TOKEN
+    pnid = (acc or {}).get('phone_number_id') or (None if WHATSAPP_DB_ONLY else PHONE_NUMBER_ID)
+    token = (acc or {}).get('whatsapp_token') or (None if WHATSAPP_DB_ONLY else WHATSAPP_TOKEN)
     if not pnid or not token:
-        print('WHATSAPP_TOKEN o PHONE_NUMBER_ID no configurados; omitiendo envío.')
-        return {'status': 0, 'body': 'missing creds'}
+        print('Credenciales de WhatsApp no configuradas en DB; omitiendo envío (modo DB-only).')
+        return {'status': 0, 'body': 'missing creds (db-only)'}
     url = f"https://graph.facebook.com/v19.0/{pnid}/messages"
     headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
     try:
