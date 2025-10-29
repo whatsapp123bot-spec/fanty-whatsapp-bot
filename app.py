@@ -1859,6 +1859,22 @@ def internal_upload():
                 url = up.get('secure_url') or up.get('url')
                 public_id = up.get('public_id')
                 name = base_name
+                # Verificar que la URL sea accesible desde el servidor (evita que WhatsApp falle con 401/403)
+                try:
+                    head = requests.head(url, allow_redirects=True, timeout=6)
+                    if head.status_code >= 400:
+                        print(f'⚠️ Uploaded URL returned status {head.status_code}:', url)
+                        return jsonify({
+                            "error": "uploaded_url_unreachable",
+                            "detail": f"status={head.status_code}",
+                            "url": url,
+                            "provider": "cloudinary",
+                            "resource_type": resource_type
+                        }), 500
+                except Exception as he:
+                    print('⚠️ Head request to uploaded URL failed:', he, url)
+                    return jsonify({"error": "uploaded_url_unreachable", "detail": str(he), "url": url}), 500
+
                 return jsonify({
                     "url": url,
                     "name": name,
@@ -1900,6 +1916,16 @@ def internal_upload():
         base_url = request.url_root.rstrip('/')
         rel = url_for('static', filename=f'uploads/{name}')
         url = base_url + rel
+        # Verificar accesibilidad local (si el servidor no es público, WhatsApp no podrá descargarlo)
+        try:
+            head = requests.head(url, allow_redirects=True, timeout=6)
+            if head.status_code >= 400:
+                print(f'⚠️ Local uploaded file not reachable (status {head.status_code}):', url)
+                return jsonify({"error": "uploaded_url_unreachable", "detail": f"status={head.status_code}", "url": url, "provider": "local"}), 500
+        except Exception as he:
+            print('⚠️ Head request to local uploaded URL failed:', he, url)
+            # Si falla el HEAD (por ejemplo servidor en localhost), devolver una advertencia en la respuesta
+            return jsonify({"error": "uploaded_url_unreachable", "detail": str(he), "url": url, "provider": "local"}), 500
         return jsonify({
             "url": url,
             "name": name,
