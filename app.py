@@ -1448,40 +1448,61 @@ def internal_upload():
     if not _allowed_upload(f.filename):
         return jsonify({"error": "invalid type"}), 400
     try:
-        # Si está configurado Cloudinary, subir ahí
+        # Leer bytes una vez para permitir fallback sin perder el stream
+        data = f.read()
+        if not data:
+            return jsonify({"error": "file is empty"}), 400
+
+        # Si está configurado Cloudinary, intentar subir ahí primero
         if CLOUDINARY_URL and cloudinary:
-            resource_type = 'image' if ext.lower() in ('.jpg', '.jpeg', '.png') else 'raw'
-            up = cloudinary.uploader.upload(
-                f.stream,
-                resource_type=resource_type,
-                folder=os.getenv('CLOUDINARY_FOLDER', 'fanty/uploads')
-            )
-            url = up.get('secure_url') or up.get('url')
-            public_id = up.get('public_id')
-            name = public_id.split('/')[-1] if public_id else secure_filename(f.filename)
-            return jsonify({
-                "url": url,
-                "name": name,
-                "ext": ext.lower(),
-                "provider": "cloudinary",
-                "public_id": public_id,
-                "resource_type": resource_type
-            }), 200
+            try:
+                resource_type = 'image' if ext.lower() in ('.jpg', '.jpeg', '.png') else 'raw'
+                base_name = secure_filename(os.path.basename(f.filename)) or 'file'
+                up = cloudinary.uploader.upload(
+                    data,
+                    resource_type=resource_type,
+                    folder=os.getenv('CLOUDINARY_FOLDER', 'fanty/uploads'),
+                    use_filename=True,
+                    unique_filename=False,
+                    filename=base_name
+                )
+                url = up.get('secure_url') or up.get('url')
+                public_id = up.get('public_id')
+                name = base_name
+                return jsonify({
+                    "url": url,
+                    "name": name,
+                    "ext": ext.lower(),
+                    "provider": "cloudinary",
+                    "public_id": public_id,
+                    "resource_type": resource_type
+                }), 200
+            except Exception as ce:
+                # Log y continuar con fallback local
+                try:
+                    print('⚠️ Cloudinary upload failed, falling back to local:', ce)
+                except Exception:
+                    pass
 
         # Fallback: guardar local en static/uploads
-        base = secure_filename(os.path.basename(f.filename)) or 'file'
-        name = base
+        base_name = secure_filename(os.path.basename(f.filename)) or 'file'
+        # Asegura extensión .pdf para PDFs, para Content-Type correcto en navegador
+        root, current_ext = os.path.splitext(base_name)
+        if ext.lower() == '.pdf' and current_ext.lower() != '.pdf':
+            base_name = root + '.pdf'
+        name = base_name
         dest = os.path.join(UPLOAD_DIR, name)
         # Evitar colisiones añadiendo sufijo
         i = 1
         while os.path.exists(dest):
-            name = f"{os.path.splitext(base)[0]}_{i}{ext}"
+            name = f"{os.path.splitext(base_name)[0]}_{i}{ext}"
             dest = os.path.join(UPLOAD_DIR, name)
             i += 1
-        f.save(dest)
-        base = request.url_root.rstrip('/')
+        with open(dest, 'wb') as out:
+            out.write(data)
+        base_url = request.url_root.rstrip('/')
         rel = url_for('static', filename=f'uploads/{name}')
-        url = base + rel
+        url = base_url + rel
         return jsonify({
             "url": url,
             "name": name,
@@ -1489,6 +1510,11 @@ def internal_upload():
             "provider": "local"
         }), 200
     except Exception as e:
+        # Loguear para diagnóstico y responder 500
+        try:
+            print('❌ Upload error:', e)
+        except Exception:
+            pass
         return jsonify({"error": str(e)}), 500
 
 
