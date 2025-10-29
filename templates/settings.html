@@ -102,7 +102,10 @@
       </div>
       <div class="row">
         <label>WhatsApp Token</label>
-        <input type="password" name="whatsapp_token" placeholder="Token de acceso" required />
+        <div>
+          <input type="password" name="whatsapp_token" placeholder="Token de acceso" required />
+          <div class="help">Pega el token sin comillas ni el prefijo Bearer. También puedes pegar JSON {"access_token":"..."} o una línea tipo WHATSAPP_TOKEN=... y lo limpiamos.</div>
+        </div>
       </div>
       <div class="row">
         <label>Verify Token</label>

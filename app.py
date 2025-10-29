@@ -2146,9 +2146,25 @@ def settings_page():
         label = (request.form.get('label') or '').strip()
         pnid = (request.form.get('phone_number_id') or '').strip()
         wtok = (request.form.get('whatsapp_token') or '').strip()
-        # Saneamiento del token: quitar comillas, espacios y saltos de línea accidentales
+        # Saneamiento del token: quitar comillas, espacios, saltos de línea y prefijo 'Bearer '
         if wtok:
             wtok = wtok.replace('\r', '').replace('\n', '').strip().strip('"').strip("'")
+            if wtok.lower().startswith('bearer '):
+                wtok = wtok.split(None, 1)[1].strip()
+            # Si vino un JSON pegado, intentar extraer access_token
+            if wtok.startswith('{') and 'access_token' in wtok:
+                try:
+                    obj = json.loads(wtok)
+                    wtok = (obj.get('access_token') or '').strip()
+                except Exception:
+                    pass
+            # Quitar posible export/cmd style: WHATSAPP_TOKEN=...
+            if '=' in wtok and ('WHATSAPP_TOKEN' in wtok or 'ACCESS_TOKEN' in wtok):
+                try:
+                    parts = wtok.split('=', 1)
+                    wtok = parts[1].strip().strip('"').strip("'")
+                except Exception:
+                    pass
         vtok = (request.form.get('verify_token') or '').strip()
         is_def = True if single_mode else (request.form.get('is_default') == '1')
         if label and pnid and wtok:
