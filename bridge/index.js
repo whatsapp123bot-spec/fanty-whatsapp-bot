@@ -1,5 +1,7 @@
 const { Client, LocalAuth, Buttons, List } = require('whatsapp-web.js');
-const qrcode = require('qrcode-terminal');
+const qrcodeTerminal = require('qrcode-terminal');
+const QRCode = require('qrcode');
+const express = require('express');
 const axios = require('axios');
 require('dotenv').config();
 
@@ -14,15 +16,26 @@ const client = new Client({
 
 // Guarda últimas opciones por chat (para permitir responder 1/2/3 o por título)
 const lastOptionsByChat = new Map();
+// Estado del QR/Conexión para exponer por HTTP
+let lastQr = null;
+let isReady = false;
 
 client.on('qr', (qr) => {
-  qrcode.generate(qr, { small: true });
+  lastQr = qr;
+  isReady = false;
+  // Mostrar también en consola
+  try { qrcodeTerminal.generate(qr, { small: true }); } catch (_) {}
   console.log('📱 Escanea este código QR con tu WhatsApp (como WhatsApp Web)');
 });
 
 client.on('ready', () => {
+  isReady = true;
+  lastQr = null;
   console.log('✅ Bot conectado con tu WhatsApp');
   console.log('🌐 Backend Flask:', FLASK_BASE);
+});
+client.on('disconnected', () => {
+  isReady = false;
 });
 
 function htmlToText(html) {
@@ -138,3 +151,25 @@ client.on('message', async (msg) => {
 });
 
 client.initialize();
+// Servidor HTTP para exponer QR y estado (para el panel Flask)
+const app = express();
+const PORT = parseInt(process.env.BRIDGE_PORT || process.env.PORT || '3001', 10);
+app.get('/status', (req, res) => {
+  res.json({ connected: isReady, has_qr: !!lastQr });
+});
+app.get('/qr.png', async (req, res) => {
+  try {
+    if (!lastQr) {
+      res.status(404).send('No QR');
+      return;
+    }
+    const png = await QRCode.toBuffer(lastQr, { type: 'png', margin: 1, scale: 8 });
+    res.setHeader('Content-Type', 'image/png');
+    res.send(png);
+  } catch (e) {
+    res.status(500).send(String(e?.message || e));
+  }
+});
+app.listen(PORT, () => {
+  console.log(`📡 Bridge HTTP escuchando en http://127.0.0.1:${PORT}`);
+});

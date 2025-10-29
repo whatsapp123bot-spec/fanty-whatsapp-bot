@@ -48,6 +48,7 @@ WHATSAPP_ADVISOR_URL = os.getenv("WHATSAPP_ADVISOR_URL", "https://wa.me/51932187
 FB_URL = os.getenv("FB_URL", "https://web.facebook.com/fantasiaintimaa/")
 IG_URL = os.getenv("IG_URL", "https://www.instagram.com/fantasia_intima_lenceria")
 TIKTOK_URL = os.getenv("TIKTOK_URL", "https://www.tiktok.com/@fantasa.ntima")
+BRIDGE_URL = os.getenv("BRIDGE_URL", "http://127.0.0.1:3001")
 
 # Configuración de flujo dinámico (opcional) controlado por JSON
 FLOW_ENABLED = os.getenv("FLOW_ENABLED", "0") == "1"  # Obsoleto en webhook: preferimos flag en flow.json
@@ -741,9 +742,11 @@ def webhook():
                                         matched_node = None
                                     if matched_node:
                                         send_flow_node(from_wa, matched_node)
-                                    elif FLOW_CONFIG.get('start_node') and any(g in low for g in greetings):
+                                    elif FLOW_CONFIG.get('start_node'):
+                                        # Fallback: si hay start_node definido, envíalo ante cualquier texto
+                                        # para asegurar una primera respuesta incluso sin saludo/keywords.
                                         send_flow_node(from_wa, FLOW_CONFIG.get('start_node'))
-                                    # Si no hay match, no respondemos (solo flujo gestionado por panel)
+                                    # Si no hay start_node, no respondemos (flujo gestionado por panel)
                             elif msg_type == 'interactive':
                                 interactive = message.get('interactive', {})
                                 itype = interactive.get('type')
@@ -1424,6 +1427,7 @@ def internal_health():
         "cloudinary_strict": CLOUDINARY_STRICT,
         "cloudinary_folder": os.getenv('CLOUDINARY_FOLDER', 'fanty/uploads'),
         "db_backend": "postgres" if DB_IS_POSTGRES else "sqlite",
+        "bridge_url": BRIDGE_URL,
     }
     # Intentar consultar suscripciones (si hay token y phone_number_id)
     if WHATSAPP_TOKEN and PHONE_NUMBER_ID:
@@ -1811,6 +1815,44 @@ def flow_builder():
         tiktok_url=TIKTOK_URL,
         upload_max_mb=int(os.getenv('CLOUDINARY_MAX_MB', '100')),
     )
+
+
+@app.get('/bridge')
+def bridge_page():
+    """Página con botón y visor de QR para WhatsApp no oficial (whatsapp-web.js).
+    Protegido con ?key=VERIFY_TOKEN.
+    """
+    key = request.args.get('key')
+    if key != VERIFY_TOKEN:
+        return 'Forbidden', 403
+    return render_template('bridge.html', key=key)
+
+
+@app.get('/internal/bridge/status')
+def internal_bridge_status():
+    key = request.args.get('key')
+    if key != VERIFY_TOKEN:
+        return jsonify({'error': 'forbidden'}), 403
+    try:
+        r = requests.get(f"{BRIDGE_URL}/status", timeout=2)
+        return jsonify({'ok': True, 'status': r.json()}), 200
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)}), 200
+
+
+@app.get('/internal/bridge/qr')
+def internal_bridge_qr():
+    key = request.args.get('key')
+    if key != VERIFY_TOKEN:
+        return 'Forbidden', 403
+    try:
+        r = requests.get(f"{BRIDGE_URL}/qr.png", timeout=2)
+        if r.status_code == 200:
+            from flask import Response
+            return Response(r.content, mimetype='image/png')
+        return 'No QR', 404
+    except Exception:
+        return 'Bridge no disponible', 502
 
 
 @app.route('/internal/send_test')
