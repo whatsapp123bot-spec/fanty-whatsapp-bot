@@ -258,6 +258,16 @@ def delete_account(account_id: int):
         print('⚠️ delete_account error:', e); return False
 
 
+def cleanup_accounts():
+    """Elimina cuentas inválidas (sin PNID o sin token)."""
+    try:
+        # Borrar primero las que no tienen phone_number_id o whatsapp_token
+        db_execute("DELETE FROM accounts WHERE (phone_number_id IS NULL OR TRIM(phone_number_id)='') OR (whatsapp_token IS NULL OR TRIM(whatsapp_token)='')")
+        return True
+    except Exception as e:
+        print('⚠️ cleanup_accounts error:', e); return False
+
+
 def init_conversations_db():
     try:
         if DB_IS_POSTGRES:
@@ -2116,6 +2126,16 @@ def internal_delete_account(acc_id: int):
     # Verificación de eliminación efectiva
     still = db_execute("SELECT id FROM accounts WHERE id=?", (acc_id,), fetch='one')
     return jsonify({'ok': ok and not bool(still)})
+
+
+@app.post('/internal/accounts/cleanup')
+def internal_cleanup_accounts():
+    """Elimina cuentas vacías/inválidas. Protegido con ?key=VERIFY_TOKEN."""
+    key = request.args.get('key') or request.form.get('key')
+    if key != VERIFY_TOKEN:
+        return jsonify({'error': 'forbidden'}), 403
+    ok = cleanup_accounts()
+    return jsonify({'ok': ok})
 
 
 @app.route('/settings', methods=['GET', 'POST'])

@@ -39,6 +39,7 @@
       {% else %}
         <span class="help">Administra múltiples cuentas de WhatsApp Cloud API o conéctate por WhatsApp Web escaneando el QR.</span>
       {% endif %}
+        <button class="btn btn-secondary" type="button" id="btn-cleanup">🧹 Limpiar vacías</button>
     </div>
 
   <h2 style="margin-top:0">Cuentas registradas</h2>
@@ -170,6 +171,20 @@
           }
         });
       });
+        document.getElementById('btn-cleanup')?.addEventListener('click', async () => {
+          if(!confirm('¿Eliminar cuentas vacías (sin PNID o sin token)?')) return;
+          try{
+            const res = await fetch('/internal/accounts/cleanup?key={{ key }}', { method: 'POST' });
+            const json = await res.json();
+            if(json.ok){
+              location.reload();
+            }else{
+              alert('No se pudo limpiar.');
+            }
+          }catch(e){
+            alert('Error limpiando: '+e);
+          }
+        });
     </script>
   </main>
 </body>
