@@ -1117,9 +1117,21 @@ def _post_wa(payload: dict):
     url = f"https://graph.facebook.com/v19.0/{pnid}/messages"
     headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
     try:
-        print("➡️ Enviando WA (generic):", payload)
+        try:
+            dbg_acc = {
+                'acc_id': (acc or {}).get('id'),
+                'acc_label': (acc or {}).get('label'),
+                'pnid': pnid,
+                'payload_type': payload.get('type')
+            }
+            print("➡️ Enviando WA (generic):", dbg_acc)
+        except Exception:
+            pass
         resp = requests.post(url, headers=headers, json=payload, timeout=10)
-        print("⬅️ Respuesta WA (generic):", resp.status_code, resp.text)
+        try:
+            print("⬅️ Respuesta WA (generic):", resp.status_code, resp.text)
+        except Exception:
+            pass
         # Log básico de salientes si es texto o si tiene body
         try:
             to = payload.get('to')
@@ -2024,6 +2036,49 @@ def internal_delete_asset():
             return jsonify({"error": str(e)}), 500
     else:
         return jsonify({"error": "unknown provider or cloudinary not configured"}), 400
+
+
+def _validate_account(acc: dict) -> dict:
+    """Valida credenciales llamando a Graph para el phone_number_id con el token dado.
+    Retorna: { ok: bool, status: int, body: str }
+    """
+    try:
+        pnid = (acc or {}).get('phone_number_id')
+        token = (acc or {}).get('whatsapp_token')
+        if not pnid or not token:
+            return { 'ok': False, 'status': 0, 'body': 'missing phone_number_id or token' }
+        url = f"https://graph.facebook.com/v19.0/{pnid}?fields=id"
+        headers = {"Authorization": f"Bearer {token}"}
+        r = requests.get(url, headers=headers, timeout=8)
+        ok = (r.status_code == 200 and (r.json().get('id') == pnid if r.headers.get('content-type','').startswith('application/json') else True))
+        return { 'ok': ok, 'status': r.status_code, 'body': r.text }
+    except Exception as e:
+        return { 'ok': False, 'status': 0, 'body': str(e) }
+
+
+@app.get('/internal/validate_account')
+def internal_validate_account():
+    """Valida una cuenta por id (o la por defecto) contra la API de Graph. Protegido con ?key=VERIFY_TOKEN.
+    Uso: /internal/validate_account?key=...&id=123
+    """
+    key = request.args.get('key')
+    if key != VERIFY_TOKEN:
+        return jsonify({'error': 'forbidden'}), 403
+    aid = request.args.get('id')
+    acc = None
+    if aid:
+        try:
+            row = db_execute("SELECT id,label,phone_number_id,whatsapp_token,verify_token,is_default FROM accounts WHERE id=?", (int(aid),), fetch='one')
+            if row:
+                acc = row if isinstance(row, dict) else { 'id': row[0], 'label': row[1], 'phone_number_id': row[2], 'whatsapp_token': row[3], 'verify_token': row[4], 'is_default': row[5] }
+        except Exception:
+            acc = None
+    if not acc:
+        acc = get_default_account()
+    if not acc:
+        return jsonify({'ok': False, 'error': 'no account found'}), 400
+    res = _validate_account(acc)
+    return jsonify({ 'ok': res['ok'], 'status': res['status'], 'body': res['body'], 'account': { 'id': acc.get('id'), 'label': acc.get('label'), 'phone_number_id': acc.get('phone_number_id'), 'is_default': acc.get('is_default') } })
 
 
 @app.route('/settings', methods=['GET', 'POST'])
