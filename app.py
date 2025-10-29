@@ -51,6 +51,9 @@ AI_ENABLED = os.getenv("AI_ENABLED", "0") == "1"
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "openrouter/auto")
 
+# Modo de cuentas: single-account simplifica la UI y la selección de cuenta
+SINGLE_ACCOUNT_MODE = os.getenv('SINGLE_ACCOUNT_MODE', '1') == '1'
+
 # URLs de negocio (configurables por entorno, con valores por defecto actuales)
 STORE_URL = os.getenv("STORE_URL", "https://lenceria-fantasia-intima.onrender.com/")
 WHATSAPP_ADVISOR_URL = os.getenv("WHATSAPP_ADVISOR_URL", "https://wa.me/51932187068")
@@ -160,6 +163,19 @@ def get_default_account():
         row = db_execute("SELECT id,label,phone_number_id,whatsapp_token,verify_token,is_default FROM accounts WHERE is_default=1 ORDER BY id LIMIT 1", (), fetch='one')
         if not row:
             return None
+        if isinstance(row, dict):
+            return row
+        return { 'id': row[0], 'label': row[1], 'phone_number_id': row[2], 'whatsapp_token': row[3], 'verify_token': row[4], 'is_default': row[5] }
+    except Exception:
+        return None
+
+
+def get_any_account():
+    """Devuelve alguna cuenta (la más reciente o marcada por defecto) para modo single-account."""
+    try:
+        row = db_execute("SELECT id,label,phone_number_id,whatsapp_token,verify_token,is_default FROM accounts ORDER BY is_default DESC, id DESC LIMIT 1", (), fetch='one')
+        if not row:
+             return None
         if isinstance(row, dict):
             return row
         return { 'id': row[0], 'label': row[1], 'phone_number_id': row[2], 'whatsapp_token': row[3], 'verify_token': row[4], 'is_default': row[5] }
@@ -1108,7 +1124,7 @@ def _post_wa(payload: dict):
         except Exception:
             acc = None
     if not acc:
-        acc = get_default_account()
+        acc = get_default_account() or (get_any_account() if SINGLE_ACCOUNT_MODE else None)
     pnid = (acc or {}).get('phone_number_id') or (None if WHATSAPP_DB_ONLY else PHONE_NUMBER_ID)
     token = (acc or {}).get('whatsapp_token') or (None if WHATSAPP_DB_ONLY else WHATSAPP_TOKEN)
     if not pnid or not token:
@@ -2074,7 +2090,7 @@ def internal_validate_account():
         except Exception:
             acc = None
     if not acc:
-        acc = get_default_account()
+        acc = get_default_account() or (get_any_account() if SINGLE_ACCOUNT_MODE else None)
     if not acc:
         return jsonify({'ok': False, 'error': 'no account found'}), 400
     res = _validate_account(acc)
@@ -2088,6 +2104,7 @@ def settings_page():
     if key != VERIFY_TOKEN:
         return 'Forbidden', 403
     msg = None
+    single_mode = SINGLE_ACCOUNT_MODE
     # Acciones via GET: make_default / delete
     if request.method == 'GET':
         action = request.args.get('action')
@@ -2095,7 +2112,7 @@ def settings_page():
         if action and aid:
             try:
                 aid_int = int(aid)
-                if action == 'make_default':
+                if action == 'make_default' and not single_mode:
                     upsert_account(label='', phone_number_id='', whatsapp_token='', verify_token='', is_default=True, account_id=aid_int)
                     msg = '✅ Cuenta marcada como predeterminada.'
                 elif action == 'delete':
@@ -2112,7 +2129,7 @@ def settings_page():
         if wtok:
             wtok = wtok.replace('\r', '').replace('\n', '').strip().strip('"').strip("'")
         vtok = (request.form.get('verify_token') or '').strip()
-        is_def = request.form.get('is_default') == '1'
+        is_def = True if single_mode else (request.form.get('is_default') == '1')
         if label and pnid and wtok:
             ok = upsert_account(label, pnid, wtok, vtok, is_def)
             if ok:
@@ -2138,7 +2155,7 @@ def settings_page():
                 msg = '❌ No se pudo guardar la cuenta.'
         else:
             msg = '⚠️ Faltan campos requeridos.'
-    return render_template('settings.html', accounts=list_accounts(), key=key, message=msg)
+    return render_template('settings.html', accounts=list_accounts(), key=key, message=msg, single_mode=single_mode)
 
 
 @app.route('/flow', methods=['GET', 'POST'])

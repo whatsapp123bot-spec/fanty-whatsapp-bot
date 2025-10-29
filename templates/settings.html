@@ -34,7 +34,11 @@
     <div class="top-actions">
       <a class="btn btn-secondary" href="/?">← Volver</a>
       <a class="btn btn-primary" href="/bridge?key={{ key }}">📲 Escanear código (no oficial)</a>
-      <span class="help">Administra múltiples cuentas de WhatsApp Cloud API o conéctate por WhatsApp Web escaneando el QR.</span>
+      {% if single_mode %}
+        <span class="help">Modo simple: usa una sola cuenta activa. Guarda aquí el Phone Number ID y el Token; al cambiar, toma efecto inmediato.</span>
+      {% else %}
+        <span class="help">Administra múltiples cuentas de WhatsApp Cloud API o conéctate por WhatsApp Web escaneando el QR.</span>
+      {% endif %}
     </div>
 
   <h2 style="margin-top:0">Cuentas registradas</h2>
@@ -45,7 +49,7 @@
           <th>ID</th>
           <th>Etiqueta</th>
           <th>Phone Number ID</th>
-          <th>Estado</th>
+          {% if not single_mode %}<th>Estado</th>{% endif %}
           <th>Acciones</th>
         </tr>
       </thead>
@@ -55,18 +59,24 @@
             <td>{{ a.id }}</td>
             <td>{{ a.label }}</td>
             <td><code>{{ a.phone_number_id }}</code></td>
+            {% if not single_mode %}
+              <td>
+                {% if a.is_default %}
+                  <span class="badge default">Por defecto</span>
+                {% else %}
+                  <span class="badge">Secundaria</span>
+                {% endif %}
+              </td>
+            {% endif %}
             <td>
-              {% if a.is_default %}
-                <span class="badge default">Por defecto</span>
+              {% if not single_mode %}
+                {% if not a.is_default %}
+                  <a class="btn btn-success" href="/settings?action=make_default&id={{ a.id }}&key={{ key }}">Hacer por defecto</a>
+                {% endif %}
+                {% if a.is_default %}
+                  <button class="btn btn-secondary validate-btn" type="button" data-id="{{ a.id }}">Validar</button>
+                {% endif %}
               {% else %}
-                <span class="badge">Secundaria</span>
-              {% endif %}
-            </td>
-            <td>
-              {% if not a.is_default %}
-                <a class="btn btn-success" href="/settings?action=make_default&id={{ a.id }}&key={{ key }}">Hacer por defecto</a>
-              {% endif %}
-              {% if a.is_default %}
                 <button class="btn btn-secondary validate-btn" type="button" data-id="{{ a.id }}">Validar</button>
               {% endif %}
               <a class="btn btn-danger" href="/settings?action=delete&id={{ a.id }}&key={{ key }}" onclick="return confirm('¿Eliminar esta cuenta?');">Eliminar</a>
@@ -98,16 +108,22 @@
         <label>Verify Token</label>
         <input type="text" name="verify_token" placeholder="Para verificación del webhook" />
       </div>
-      <div class="row">
-        <label>Marcar por defecto</label>
-        <input type="checkbox" name="is_default" value="1" />
-      </div>
+      {% if not single_mode %}
+        <div class="row">
+          <label>Marcar por defecto</label>
+          <input type="checkbox" name="is_default" value="1" />
+        </div>
+      {% endif %}
       <div class="row" style="grid-template-columns:1fr">
         <button class="btn btn-primary" type="submit">Guardar cuenta</button>
       </div>
     </form>
 
-    <p class="help">Nota: La vista previa y el webhook utilizarán la cuenta por defecto si no hay otra asociada al número del usuario.</p>
+    {% if single_mode %}
+      <p class="help">Esta instalación usa una única cuenta activa. La más reciente guardada se utilizará para el envío.</p>
+    {% else %}
+      <p class="help">Nota: La vista previa y el webhook utilizarán la cuenta por defecto si no hay otra asociada al número del usuario.</p>
+    {% endif %}
     <script>
       async function validateAccount(id){
         const msg = document.getElementById('validate-msg');
