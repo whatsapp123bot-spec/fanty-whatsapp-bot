@@ -246,6 +246,7 @@ def init_conversations_db():
                     last_in_at INTEGER DEFAULT 0,
                     human_timeout_min INTEGER DEFAULT 15,
                     human_expires_at INTEGER DEFAULT 0,
+                    flow_node TEXT,
                     account_id INTEGER
                 )
                 """
@@ -275,6 +276,10 @@ def init_conversations_db():
                 db_execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS human_expires_at INTEGER DEFAULT 0")
             except Exception:
                 pass
+            try:
+                db_execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS flow_node TEXT")
+            except Exception:
+                pass
         else:
             db_execute(
                 """
@@ -285,7 +290,8 @@ def init_conversations_db():
                     last_message_at INTEGER DEFAULT 0,
                     last_in_at INTEGER DEFAULT 0,
                     human_timeout_min INTEGER DEFAULT 15,
-                    human_expires_at INTEGER DEFAULT 0
+                    human_expires_at INTEGER DEFAULT 0,
+                    flow_node TEXT
                 )
                 """
             )
@@ -312,6 +318,10 @@ def init_conversations_db():
                 pass
             try:
                 db_execute("ALTER TABLE users ADD COLUMN human_expires_at INTEGER DEFAULT 0")
+            except Exception:
+                pass
+            try:
+                db_execute("ALTER TABLE users ADD COLUMN flow_node TEXT")
             except Exception:
                 pass
     except Exception as e:
@@ -441,6 +451,12 @@ def send_flow_node(to: str, node_id: str):
         return send_whatsapp_text(to, "⚠️ Flujo no disponible en este paso.")
     ntype = (node.get('type') or 'action').lower()
     text = node.get('text') or ''
+
+    # Registrar nodo actual del flujo para el usuario
+    try:
+        db_execute("UPDATE users SET flow_node=? WHERE wa_id=?", (node_id, to))
+    except Exception:
+        pass
 
     if ntype == 'advisor':
         # Preparar mensaje con enlace directo a WhatsApp del asesor y links de redes/web
@@ -727,11 +743,37 @@ def webhook():
                                                 return 'ok', 200
                                 except Exception:
                                     pass
-                                greetings = ("hola", "holi", "buenas", "buenos días", "buenas tardes", "buenas noches")
                                 flow_nodes = (FLOW_CONFIG or {}).get('nodes') or {}
                                 flow_enabled = (FLOW_CONFIG or {}).get('enabled', True)
                                 responded = False
                                 if flow_enabled and flow_nodes:
+                                    # Si el usuario ya está en un flujo (tiene un flow_node), NO re-evaluar triggers ni nodos de inicio
+                                    try:
+                                        row = db_execute("SELECT flow_node FROM users WHERE wa_id=?", (from_wa,), fetch='one')
+                                        curr_node = (row.get('flow_node') if isinstance(row, dict) else (row[0] if row else None)) or None
+                                        # Validar que el nodo exista aún en el flujo
+                                        if curr_node and curr_node in flow_nodes:
+                                            # Responder guiando a usar botones, sin avanzar el flujo
+                                            hint = "Por favor, selecciona una opción de los botones anteriores para continuar."
+                                            try:
+                                                if AI_ENABLED:
+                                                    instr = "Si el usuario escribe texto libre mientras hay un menú de botones activo, responde corto y amable pidiéndole que seleccione un botón, sin avanzar el flujo."
+                                                    # Aprovechar el historial y orientar la respuesta
+                                                    ai_text = ai_service_generate_reply(_get_recent_messages_for_ai(from_wa, 10) + [{"role":"user","content": text or low}], instruction=instr)
+                                                    if ai_text:
+                                                        send_whatsapp_text(from_wa, ai_text)
+                                                    else:
+                                                        send_whatsapp_text(from_wa, hint)
+                                                else:
+                                                    send_whatsapp_text(from_wa, hint)
+                                            except Exception:
+                                                send_whatsapp_text(from_wa, hint)
+                                            return 'ok', 200
+                                    except Exception:
+                                        pass
+
+                                    # Si NO está en flujo, evaluar triggers de arranque
+                                    greetings = ("hola", "holi", "buenas", "buenos días", "buenas tardes", "buenas noches")
                                     matched_node = None
                                     trigger_next = None
                                     try:
