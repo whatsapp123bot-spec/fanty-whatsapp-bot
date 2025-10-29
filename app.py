@@ -1,4 +1,5 @@
 import os
+import io
 import requests
 import sqlite3
 import time
@@ -28,6 +29,7 @@ ALLOWED_UPLOADS = {'.pdf', '.jpg', '.jpeg', '.png'}
 # Cloudinary (opcional)
 CLOUDINARY_URL = os.getenv('CLOUDINARY_URL')  # formato: cloudinary://api_key:api_secret@cloud_name
 CLOUDINARY_STRICT = os.getenv('CLOUDINARY_STRICT', '0') == '1'  # Si 1, exigir Cloudinary (sin fallback local)
+CLOUDINARY_MAX_MB = int(os.getenv('CLOUDINARY_MAX_MB', '100'))  # Tamaño máximo permitido (MB)
 if CLOUDINARY_URL and cloudinary:
     try:
         cloudinary.config(cloudinary_url=CLOUDINARY_URL)
@@ -1471,15 +1473,31 @@ def internal_migrate_asset_to_cloudinary():
         # Determinar resource_type por extensión
         _, ext = os.path.splitext(name.lower())
         resource_type = 'image' if ext in ('.jpg', '.jpeg', '.png') else 'raw'
-        with open(local_path, 'rb') as fh:
-            up = cloudinary.uploader.upload(
-                fh,
-                resource_type=resource_type,
-                folder=os.getenv('CLOUDINARY_FOLDER', 'fanty/uploads'),
-                use_filename=True,
-                unique_filename=False,
-                filename=name
-            )
+        fsize = os.path.getsize(local_path)
+        max_bytes = CLOUDINARY_MAX_MB * 1024 * 1024
+        if fsize > max_bytes:
+            return jsonify({"error": "file_too_large", "size": fsize, "max_bytes": max_bytes}), 400
+        if fsize > 20 * 1024 * 1024:
+            with open(local_path, 'rb') as fh:
+                up = cloudinary.uploader.upload_large(
+                    fh,
+                    resource_type=resource_type,
+                    folder=os.getenv('CLOUDINARY_FOLDER', 'fanty/uploads'),
+                    use_filename=True,
+                    unique_filename=False,
+                    filename=name,
+                    chunk_size=6 * 1024 * 1024
+                )
+        else:
+            with open(local_path, 'rb') as fh:
+                up = cloudinary.uploader.upload(
+                    fh,
+                    resource_type=resource_type,
+                    folder=os.getenv('CLOUDINARY_FOLDER', 'fanty/uploads'),
+                    use_filename=True,
+                    unique_filename=False,
+                    filename=name
+                )
         url = up.get('secure_url') or up.get('url')
         public_id = up.get('public_id')
         if delete_local:
@@ -1529,14 +1547,28 @@ def internal_upload():
             try:
                 resource_type = 'image' if ext.lower() in ('.jpg', '.jpeg', '.png') else 'raw'
                 base_name = secure_filename(os.path.basename(f.filename)) or 'file'
-                up = cloudinary.uploader.upload(
-                    data,
-                    resource_type=resource_type,
-                    folder=os.getenv('CLOUDINARY_FOLDER', 'fanty/uploads'),
-                    use_filename=True,
-                    unique_filename=False,
-                    filename=base_name
-                )
+                max_bytes = CLOUDINARY_MAX_MB * 1024 * 1024
+                if len(data) > max_bytes:
+                    raise Exception(f"file_too_large: {len(data)} bytes > {max_bytes}")
+                if len(data) > 20 * 1024 * 1024:
+                    up = cloudinary.uploader.upload_large(
+                        io.BytesIO(data),
+                        resource_type=resource_type,
+                        folder=os.getenv('CLOUDINARY_FOLDER', 'fanty/uploads'),
+                        use_filename=True,
+                        unique_filename=False,
+                        filename=base_name,
+                        chunk_size=6 * 1024 * 1024
+                    )
+                else:
+                    up = cloudinary.uploader.upload(
+                        data,
+                        resource_type=resource_type,
+                        folder=os.getenv('CLOUDINARY_FOLDER', 'fanty/uploads'),
+                        use_filename=True,
+                        unique_filename=False,
+                        filename=base_name
+                    )
                 url = up.get('secure_url') or up.get('url')
                 public_id = up.get('public_id')
                 name = base_name

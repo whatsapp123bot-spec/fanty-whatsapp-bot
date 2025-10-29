@@ -82,10 +82,13 @@ Variables útiles:
 - `CLOUDINARY_URL` (obligatoria para activar)
 - `CLOUDINARY_FOLDER` (opcional, ej. `fanty/uploads`)
 - `CLOUDINARY_STRICT` (1 para exigir Cloudinary y no permitir fallback local; recomendado en producción)
+ - `CLOUDINARY_MAX_MB` (tamaño máximo permitido; por defecto 100)
 
 En Render, agrega estas variables en el panel de Environment.
 
-Nota: Los PDFs se suben como `resource_type=raw` en Cloudinary. En la consola de Cloudinary, revisa la pestaña/tabla “Raw” o filtra por tipo “Raw” para verlos dentro de la carpeta configurada.
+Notas:
+- Los PDFs se suben como `resource_type=raw`. En el panel de Cloudinary, búscalos en la sección “Raw” (no “Images”), dentro de la carpeta definida.
+- Para archivos grandes (> ~20 MB) se usa carga segmentada (upload_large) automáticamente. Si el tamaño supera `CLOUDINARY_MAX_MB`, la API devolverá error `file_too_large`.
 
 ## Base de datos
 
