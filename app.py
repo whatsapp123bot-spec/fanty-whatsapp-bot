@@ -826,6 +826,21 @@ def webhook():
                                                 return 'ok', 200
                                 except Exception:
                                     pass
+                                # Comando para reiniciar el flujo manualmente
+                                try:
+                                    if 'cerrar flujo' in low:
+                                        # Limpiar estado de flujo
+                                        db_execute("UPDATE users SET flow_node=NULL WHERE wa_id=?", (from_wa,))
+                                        send_whatsapp_text(from_wa, '✅ Flujo reiniciado. Iniciemos de nuevo.')
+                                        # Si hay un nodo inicial configurado, enviarlo
+                                        _nodes = (FLOW_CONFIG or {}).get('nodes') or {}
+                                        _enabled = (FLOW_CONFIG or {}).get('enabled', True)
+                                        _start = (FLOW_CONFIG or {}).get('start_node')
+                                        if _enabled and _start and _start in _nodes:
+                                            send_flow_node(from_wa, _start)
+                                        return 'ok', 200
+                                except Exception:
+                                    pass
                                 flow_nodes = (FLOW_CONFIG or {}).get('nodes') or {}
                                 flow_enabled = (FLOW_CONFIG or {}).get('enabled', True)
                                 responded = False
