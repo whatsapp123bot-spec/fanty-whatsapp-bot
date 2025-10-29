@@ -2115,7 +2115,27 @@ def settings_page():
         is_def = request.form.get('is_default') == '1'
         if label and pnid and wtok:
             ok = upsert_account(label, pnid, wtok, vtok, is_def)
-            msg = '✅ Cuenta guardada.' if ok else '❌ No se pudo guardar la cuenta.'
+            if ok:
+                # Intentar validar inmediatamente la cuenta guardada
+                try:
+                    row = db_execute("SELECT id,label,phone_number_id,whatsapp_token,verify_token,is_default FROM accounts WHERE phone_number_id=? ORDER BY id DESC LIMIT 1", (pnid,), fetch='one')
+                    acc = row if isinstance(row, dict) else ({ 'id': row[0], 'label': row[1], 'phone_number_id': row[2], 'whatsapp_token': row[3], 'verify_token': row[4], 'is_default': row[5] } if row else None)
+                    if acc:
+                        res = _validate_account(acc)
+                        if res.get('ok'):
+                            msg = f"✅ Cuenta guardada y validada (status {res.get('status')})."
+                        else:
+                            # Truncar body largo para no romper la UI
+                            body = (res.get('body') or '')
+                            if isinstance(body, str) and len(body) > 180:
+                                body = body[:180] + '…'
+                            msg = f"⚠️ Cuenta guardada, pero la validación falló (status {res.get('status')}): {body}"
+                    else:
+                        msg = '✅ Cuenta guardada.'
+                except Exception:
+                    msg = '✅ Cuenta guardada.'
+            else:
+                msg = '❌ No se pudo guardar la cuenta.'
         else:
             msg = '⚠️ Faltan campos requeridos.'
     return render_template('settings.html', accounts=list_accounts(), key=key, message=msg)
