@@ -61,6 +61,9 @@
   .assets .actions { display:flex; gap:8px; margin-bottom:6px; }
   .assets .actions button { background:#7444a8; color:#fff; border:0; border-radius:8px; padding:6px 8px; cursor:pointer; }
   .assets .list { display:flex; flex-direction:column; gap:6px; }
+  .asset-row { display:flex; align-items:center; gap:8px; background:#fff; border:1px solid #eee; border-radius:8px; padding:6px; }
+  .asset-row img { max-height:38px; border-radius:6px; }
+  .asset-row .name { flex:1; font-size:13px; color:#333; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .asset-item { display:flex; align-items:center; gap:8px; background:#fff; border:1px solid #eee; border-radius:8px; padding:6px; }
   .asset-item img { max-height:38px; border-radius:6px; }
   .asset-item .name { flex:1; font-size:13px; color:#333; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
@@ -360,6 +363,74 @@
         const ta = document.createElement('textarea'); ta.value = node.text || '';
         ta.placeholder = 'Texto del mensaje'; ta.addEventListener('input', () => { flow.nodes[id].text = ta.value; });
         el.appendChild(ta);
+
+        // Assets UI (opcional): permitir subir imagen/archivo o agregar URL manual
+        const assetsBox = document.createElement('div'); assetsBox.className='assets';
+        const title = document.createElement('div'); title.style.fontWeight='700'; title.style.marginBottom='6px'; title.textContent='Adjuntos (imágenes / archivos)';
+        assetsBox.appendChild(title);
+        const actions = document.createElement('div'); actions.className='actions';
+        const upImg = document.createElement('button'); upImg.textContent='Subir imagen';
+        const upFile = document.createElement('button'); upFile.textContent='Subir archivo';
+        const addUrl = document.createElement('button'); addUrl.textContent='Agregar URL';
+        actions.appendChild(upImg); actions.appendChild(upFile); actions.appendChild(addUrl);
+        assetsBox.appendChild(actions);
+        const list = document.createElement('div'); list.className='list'; assetsBox.appendChild(list);
+
+        const ensureArr = () => { if (!Array.isArray(flow.nodes[id].assets)) flow.nodes[id].assets = []; };
+        const refreshList = () => {
+          list.innerHTML='';
+          const arr = flow.nodes[id].assets || [];
+          arr.forEach((a, idx) => {
+            const row = document.createElement('div'); row.className='asset-row';
+            if ((a.type||'')==='image') {
+              const img = document.createElement('img'); img.src = a.url; img.alt=a.name||'img'; row.appendChild(img);
+            } else {
+              const ic = document.createElement('span'); ic.textContent='📄'; row.appendChild(ic);
+            }
+            const nm = document.createElement('div'); nm.className='name'; nm.textContent = a.name || a.url || 'archivo'; row.appendChild(nm);
+            const del = document.createElement('button'); del.className='delbtn'; del.textContent='Quitar';
+            del.onclick = () => { flow.nodes[id].assets.splice(idx,1); refreshList(); };
+            row.appendChild(del);
+            list.appendChild(row);
+          });
+        };
+        refreshList();
+
+        function doUpload(kind){
+          const inp = document.createElement('input'); inp.type='file';
+          if (kind==='image') inp.accept='.jpg,.jpeg,.png';
+          else inp.accept='.pdf,.jpg,.jpeg,.png';
+          inp.onchange = () => {
+            const f = inp.files && inp.files[0]; if (!f) return;
+            const mb = f.size / (1024*1024);
+            if (mb > UPLOAD_MAX_MB) { alert('Archivo demasiado grande (máx '+UPLOAD_MAX_MB+' MB)'); return; }
+            const fd = new FormData(); fd.append('file', f); fd.append('key', {{ key|tojson }});
+            fetch('/internal/upload', { method:'POST', body: fd })
+              .then(r=>r.json())
+              .then(j=>{
+                if (j.error) throw new Error(j.error);
+                ensureArr();
+                const isImage = (j.ext||'').toLowerCase() === '.jpg' || (j.ext||'').toLowerCase() === '.jpeg' || (j.ext||'').toLowerCase() === '.png';
+                flow.nodes[id].assets.push({ type: isImage?'image':'file', url: j.url, name: j.name||f.name });
+                refreshList();
+              })
+              .catch(e=> alert('Error al subir: '+ e.message));
+          };
+          inp.click();
+        }
+        upImg.onclick = (e)=>{ e.preventDefault(); doUpload('image'); };
+        upFile.onclick = (e)=>{ e.preventDefault(); doUpload('file'); };
+        addUrl.onclick = (e)=>{
+          e.preventDefault();
+          const url = prompt('Pega la URL pública del archivo o imagen:');
+          if (!url) return;
+          ensureArr();
+          const lower = url.toLowerCase();
+          const isImg = lower.endsWith('.jpg')||lower.endsWith('.jpeg')||lower.endsWith('.png');
+          flow.nodes[id].assets.push({ type: isImg?'image':'file', url: url, name: url.split('/').pop()||'archivo' });
+          refreshList();
+        };
+        el.appendChild(assetsBox);
       }
       if ((node.type||'action') === 'trigger') {
         const sc2 = document.createElement('span'); sc2.className='start-connector'; sc2.title='Arrastra para conectar este trigger con otro nodo';
