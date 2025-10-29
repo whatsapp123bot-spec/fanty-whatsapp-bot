@@ -1590,7 +1590,7 @@ def internal_upload():
                     # En modo estricto, no permitir fallback local
                     return jsonify({"error": "cloudinary_upload_failed", "detail": str(ce)}), 500
 
-        # Fallback: guardar local en static/uploads
+        # Fallback: guardar local en static/uploads (si no es estricto). Aplica límite de tamaño igualmente.
         base_name = secure_filename(os.path.basename(f.filename)) or 'file'
         # Asegura extensión .pdf para PDFs, para Content-Type correcto en navegador
         root, current_ext = os.path.splitext(base_name)
@@ -1598,6 +1598,10 @@ def internal_upload():
             base_name = root + '.pdf'
         name = base_name
         dest = os.path.join(UPLOAD_DIR, name)
+        # Límite de tamaño también para local
+        max_bytes = CLOUDINARY_MAX_MB * 1024 * 1024
+        if len(data) > max_bytes:
+            return jsonify({"error": "file_too_large", "max_mb": CLOUDINARY_MAX_MB}), 400
         # Evitar colisiones añadiendo sufijo
         i = 1
         while os.path.exists(dest):
@@ -1805,6 +1809,7 @@ def flow_builder():
         fb_url=FB_URL,
         ig_url=IG_URL,
         tiktok_url=TIKTOK_URL,
+        upload_max_mb=int(os.getenv('CLOUDINARY_MAX_MB', '100')),
     )
 
 

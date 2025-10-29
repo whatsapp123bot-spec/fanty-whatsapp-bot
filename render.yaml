@@ -21,6 +21,6 @@ services:
       - key: CLOUDINARY_STRICT
         value: "1"
       - key: CLOUDINARY_MAX_MB
-        value: "100"
+        value: "10"
       - key: FLOW_ENABLED
         value: "1"

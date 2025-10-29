@@ -82,7 +82,7 @@ Variables útiles:
 - `CLOUDINARY_URL` (obligatoria para activar)
 - `CLOUDINARY_FOLDER` (opcional, ej. `fanty/uploads`)
 - `CLOUDINARY_STRICT` (1 para exigir Cloudinary y no permitir fallback local; recomendado en producción)
- - `CLOUDINARY_MAX_MB` (tamaño máximo permitido; por defecto 100)
+- `CLOUDINARY_MAX_MB` (tamaño máximo permitido; por defecto 10 en Render)
 
 En Render, agrega estas variables en el panel de Environment.
 

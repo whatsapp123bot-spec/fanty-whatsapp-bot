@@ -140,6 +140,7 @@
   <script>
     const FLOW_LIMIT = 3;
     let flow = {{ flow|tojson }};
+    const UPLOAD_MAX_MB = {{ upload_max_mb|default(10) }};
   if (!flow || typeof flow !== 'object') flow = { start_node: null, nodes: {} };
     // Defaults para links (inyectados desde el backend)
     const DEFAULT_LINKS = {
@@ -381,7 +382,7 @@
           item.appendChild(rm);
           list.appendChild(item);
         });
-        const help = document.createElement('div'); help.className='legend'; help.textContent='Se envían antes del texto. Admite PDF, JPG, PNG.';
+  const help = document.createElement('div'); help.className='legend'; help.textContent='Se envían antes del texto. Admite PDF, JPG, PNG. Máx. ' + UPLOAD_MAX_MB + ' MB.';
         assets.appendChild(list); assets.appendChild(help);
         el.appendChild(assets);
         const btns = document.createElement('div'); btns.className='btns';
@@ -731,6 +732,10 @@
         const input = document.createElement('input'); input.type='file'; input.accept = accept;
         const picked = await new Promise((resolve) => { input.onchange = () => resolve(input.files && input.files[0]); input.click(); });
         if (!picked) return;
+        if (picked.size > UPLOAD_MAX_MB * 1024 * 1024) {
+          alert('Archivo demasiado grande. Máximo ' + UPLOAD_MAX_MB + ' MB.');
+          return;
+        }
         const fd = new FormData(); fd.append('file', picked);
         const res = await fetch('/internal/upload?key={{ key }}', { method:'POST', body: fd });
         if (!res.ok) { alert('Error al subir archivo'); return; }
