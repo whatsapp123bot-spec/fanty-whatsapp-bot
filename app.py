@@ -4,7 +4,7 @@ import requests
 import sqlite3
 import time
 import json
-from services.ai_service import generate_reply as ai_service_generate_reply
+from services.ai_service import generate_reply as ai_service_generate_reply, classify_should_trigger
 from flask import Flask, request, render_template, jsonify, redirect, url_for, flash, g
 from werkzeug.utils import secure_filename
 try:
@@ -911,13 +911,11 @@ def webhook():
                                                     if lines and any(ln == low for ln in lines):
                                                         trigger_next = nxt; break
                                                 elif ttype == 'ai' and AI_ENABLED:
-                                                    # Heurística con IA: pregunta binaria
+                                                    # Clasificación estricta SI/NO con servicio dedicado
                                                     try:
                                                         tip = (ndef.get('instruction') or '').strip()
-                                                        probe = f"{tip}\nUsuario dice: '{text}'. Responde solo 'SI' o 'NO' si se debe iniciar el flujo."
-                                                        ai_out = ai_generate_reply(from_wa, probe)
-                                                        ans = (ai_out or '').strip().lower()
-                                                        if ans.startswith('si') or ans.startswith('sí') or ans == 'si' or ans == 'sí':
+                                                        ok = classify_should_trigger(text or low, instruction=tip)
+                                                        if ok:
                                                             trigger_next = nxt; break
                                                     except Exception:
                                                         pass
