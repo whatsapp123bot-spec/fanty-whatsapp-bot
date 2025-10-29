@@ -132,6 +132,7 @@
         <button onclick="addNodeOfType('action')">Acción (mensaje + botones)</button>
         <button onclick="addNodeOfType('advisor')">Conversar con asesor (número WhatsApp)</button>
         <button onclick="addNodeOfType('start')">Inicio (palabras clave)</button>
+        <button onclick="addNodeOfType('trigger')">Trigger (keywords / deeplink / IA)</button>
       </div>
       <div style="text-align:right; margin-top:10px;"><button class="btn del" onclick="closeAddNodeMenu()">Cerrar</button></div>
     </div>
@@ -327,13 +328,33 @@
         const note = document.createElement('div'); note.className='legend';
         note.textContent = 'Escriba las palabras clave. Este nodo inicia el flujo.';
         el.appendChild(note);
+      } else if ((node.type||'action') === 'trigger') {
+        // Config UI para trigger
+        const row = document.createElement('div'); row.style.display='grid'; row.style.gridTemplateColumns='1fr 1fr'; row.style.gap='8px'; row.style.margin='6px 0';
+        const lab = document.createElement('label'); lab.textContent='Tipo de trigger'; lab.style.fontSize='13px'; lab.style.color='#333';
+        const sel = document.createElement('select');
+        ;['keywords','deeplink','ai'].forEach(t=>{ const o=document.createElement('option'); o.value=t; o.textContent=t; sel.appendChild(o); });
+        sel.value = node.trigger_type || 'keywords';
+        sel.onchange = ()=>{ flow.nodes[id].trigger_type = sel.value; refresh(); };
+        row.appendChild(lab); row.appendChild(sel); el.appendChild(row);
+        if ((node.trigger_type||'keywords') === 'keywords') {
+          const kw = document.createElement('input'); kw.placeholder='Palabras clave separadas por coma'; kw.value = node.patterns||'';
+          kw.style.width='100%'; kw.oninput = ()=>{ flow.nodes[id].patterns = kw.value; }; el.appendChild(kw);
+        } else if ((node.trigger_type||'keywords') === 'deeplink') {
+          const ex = document.createElement('textarea'); ex.placeholder='Frases exactas (una por línea) — para wa.me?text=...'; ex.value = node.patterns||''; ex.style.minHeight='60px';
+          ex.addEventListener('input', ()=>{ flow.nodes[id].patterns = ex.value; }); el.appendChild(ex);
+        } else if ((node.trigger_type||'keywords') === 'ai') {
+          const hint = document.createElement('div'); hint.className='legend'; hint.textContent='La IA decidirá si arranca (ej: saludos/consulta general).'; el.appendChild(hint);
+          const ins = document.createElement('textarea'); ins.placeholder='Instrucción opcional a la IA (ej: inicia si parece saludo)';
+          ins.value = node.instruction||''; ins.style.minHeight='60px'; ins.addEventListener('input', ()=>{ flow.nodes[id].instruction = ins.value; }); el.appendChild(ins);
+        }
       } else {
         const ta = document.createElement('textarea'); ta.value = node.text || '';
         ta.placeholder = 'Texto del mensaje'; ta.addEventListener('input', () => { flow.nodes[id].text = ta.value; });
         el.appendChild(ta);
       }
 
-      if ((node.type||'action') === 'start') {
+  if ((node.type||'action') === 'start') {
         // Toggle de encendido/apagado global del flujo
         const toggleWrap = document.createElement('div'); toggleWrap.style.display='flex'; toggleWrap.style.alignItems='center'; toggleWrap.style.gap='8px'; toggleWrap.style.margin='4px 0 6px';
         const toggle = document.createElement('input'); toggle.type='checkbox'; toggle.checked = !!flow.enabled; toggle.id = `en_${id}`;
@@ -358,6 +379,12 @@
         sc.dataset.startConnector = id;
         sc.addEventListener('mousedown', (e) => startConnect(e, id, null, sc));
         el.appendChild(sc);
+      }
+      if ((node.type||'action') === 'trigger') {
+        const sc2 = document.createElement('span'); sc2.className='start-connector'; sc2.title='Arrastra para conectar este trigger con otro nodo';
+        sc2.dataset.startConnector = id;
+        sc2.addEventListener('mousedown', (e) => startConnect(e, id, null, sc2));
+        el.appendChild(sc2);
       }
 
       if ((node.type||'action') !== 'advisor' && (node.type||'action') !== 'start') {
@@ -423,10 +450,11 @@
     function openAddNodeMenu(){ overlay.style.display='flex'; }
     function closeAddNodeMenu(){ overlay.style.display='none'; }
     function addNodeOfType(type){
-      const id = uid(type==='start' ? 'start' : (type==='advisor'?'advisor':'node'));
+      const id = uid(type==='start' ? 'start' : (type==='advisor'?'advisor':(type==='trigger'?'trigger':'node')));
       const base = { type: type||'action', text: '', buttons: [], pos: null };
       if (type==='advisor') base.phone='';
       if (type==='start') base.keywords='hola, holi, buenas';
+      if (type==='trigger') { base.trigger_type='keywords'; base.patterns=''; }
       flow.nodes[id] = base;
       if (type==='start') flow.start_node = id;
       if (!flow.start_node) flow.start_node = id;
@@ -538,8 +566,17 @@
           path.setAttribute('marker-end','url(#arrow)');
           linesSvg.appendChild(path);
         });
-        // Edge desde nodo start (si existe next)
+  // Edge desde nodo start (si existe next)
         if ((node.type||'action') === 'start' && node.next && startConnPos[id] && inletPos[node.next]) {
+          const p1 = startConnPos[id];
+          const p2 = inletPos[node.next];
+          const x1 = p1.x, y1 = p1.y; const x2 = p2.x, y2 = p2.y;
+          const path = document.createElementNS('http://www.w3.org/2000/svg','path');
+          const mx = (x1 + x2)/2; const d = `M ${x1} ${y1} C ${mx} ${y1}, ${mx} ${y2}, ${x2} ${y2}`;
+          path.setAttribute('d', d); path.setAttribute('class','edge'); path.setAttribute('fill','none'); path.setAttribute('stroke','#8a8aa8'); path.setAttribute('stroke-width','2'); path.setAttribute('marker-end','url(#arrow)'); linesSvg.appendChild(path);
+        }
+        // Edge desde nodo trigger (si existe next)
+        if ((node.type||'action') === 'trigger' && node.next && startConnPos[id] && inletPos[node.next]) {
           const p1 = startConnPos[id];
           const p2 = inletPos[node.next];
           const x1 = p1.x, y1 = p1.y; const x2 = p2.x, y2 = p2.y;
@@ -682,6 +719,21 @@
           }
           if (flow.nodes[k].next) flow.nodes[k].next = String(flow.nodes[k].next);
           // El nodo inicio no usa texto; limpiarlo si existe
+          if ('text' in flow.nodes[k]) delete flow.nodes[k].text;
+        }
+        if (flow.nodes[k].type==='trigger') {
+          const t = (flow.nodes[k].trigger_type||'keywords');
+          flow.nodes[k].trigger_type = t;
+          if (t === 'ai') {
+            const ins = (flow.nodes[k].instruction||'').toString();
+            if (ins.trim()) flow.nodes[k].instruction = ins.trim(); else delete flow.nodes[k].instruction;
+            delete flow.nodes[k].patterns;
+          } else {
+            const pat = (flow.nodes[k].patterns||'').toString();
+            flow.nodes[k].patterns = pat;
+            delete flow.nodes[k].instruction;
+          }
+          if (flow.nodes[k].next) flow.nodes[k].next = String(flow.nodes[k].next);
           if ('text' in flow.nodes[k]) delete flow.nodes[k].text;
         }
         if (!Array.isArray(flow.nodes[k].assets)) delete flow.nodes[k].assets; // solo guardar si existe bien formada

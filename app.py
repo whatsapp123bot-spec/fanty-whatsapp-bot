@@ -4,6 +4,7 @@ import requests
 import sqlite3
 import time
 import json
+from services.ai_service import generate_reply as ai_service_generate_reply
 from flask import Flask, request, render_template, jsonify, redirect, url_for, flash, g
 from werkzeug.utils import secure_filename
 try:
@@ -500,6 +501,9 @@ def send_flow_node(to: str, node_id: str):
     # start: si tiene next, redirigir directamente al siguiente nodo
     if ntype == 'start' and node.get('next'):
         return send_flow_node(to, node.get('next'))
+    # trigger: su función es saltar al siguiente si corresponde (ya resuelto en webhook/preview)
+    if ntype == 'trigger' and node.get('next'):
+        return send_flow_node(to, node.get('next'))
 
     # Si hay adjuntos (assets), enviarlos primero
     for asset in (node.get('assets') or [])[:5]:
@@ -729,6 +733,7 @@ def webhook():
                                 responded = False
                                 if flow_enabled and flow_nodes:
                                     matched_node = None
+                                    trigger_next = None
                                     try:
                                         # 1) Match exacto (frases exactas) en nodos de inicio
                                         for nid, ndef in flow_nodes.items():
@@ -755,10 +760,45 @@ def webhook():
                                                 if any(k and k in low for k in kws):
                                                     matched_node = nid
                                                     break
+                                        # 3) Triggers (keywords/deeplink/ai) que saltan a un nodo específico
+                                        if not matched_node:
+                                            for nid, ndef in flow_nodes.items():
+                                                if (ndef.get('type') or '').lower() != 'trigger':
+                                                    continue
+                                                nxt = (ndef.get('next') or '').strip()
+                                                if not nxt:
+                                                    continue
+                                                ttype = (ndef.get('trigger_type') or 'keywords').lower()
+                                                if ttype == 'keywords':
+                                                    pats = [p.strip().lower() for p in (ndef.get('patterns') or '').split(',') if p.strip()]
+                                                    if pats and any(p and p in low for p in pats):
+                                                        trigger_next = nxt; break
+                                                elif ttype == 'deeplink':
+                                                    lines = []
+                                                    for ln in (ndef.get('patterns') or '').split('\n'):
+                                                        ln = ln.strip().lower()
+                                                        if ln:
+                                                            lines.append(ln)
+                                                    if lines and any(ln == low for ln in lines):
+                                                        trigger_next = nxt; break
+                                                elif ttype == 'ai' and AI_ENABLED:
+                                                    # Heurística con IA: pregunta binaria
+                                                    try:
+                                                        tip = (ndef.get('instruction') or '').strip()
+                                                        probe = f"{tip}\nUsuario dice: '{text}'. Responde solo 'SI' o 'NO' si se debe iniciar el flujo."
+                                                        ai_out = ai_generate_reply(from_wa, probe)
+                                                        ans = (ai_out or '').strip().lower()
+                                                        if ans.startswith('si') or ans.startswith('sí') or ans == 'si' or ans == 'sí':
+                                                            trigger_next = nxt; break
+                                                    except Exception:
+                                                        pass
                                     except Exception:
                                         matched_node = None
                                     if matched_node:
                                         send_flow_node(from_wa, matched_node)
+                                        responded = True
+                                    elif trigger_next:
+                                        send_flow_node(from_wa, trigger_next)
                                         responded = True
                                     elif (FLOW_CONFIG.get('start_node') and any(g in low for g in greetings)):
                                         # Solo mostrar el inicio del flujo ante saludos comunes
@@ -903,54 +943,14 @@ def _get_recent_messages_for_ai(wa_id: str, limit: int = 12):
 
 
 def ai_generate_reply(wa_id: str, user_text: str) -> str:
-    """Llama a OpenRouter para generar una respuesta. Retorna texto o mensaje por defecto."""
+    """Proxy al servicio de IA (OpenRouter)."""
     if not (AI_ENABLED and OPENROUTER_API_KEY):
         return ""
-    try:
-        system_prompt = (
-            "Eres 'Fanty', una asistente de WhatsApp amable y concisa para una tienda de lencería. "
-            "Ayuda a clientes en español latino, ofrece sugerencias y guía hacia la tienda y métodos de pago/envío. "
-            f"La tienda es: {STORE_URL}. Si piden hablar con humana, sugiere el botón correspondiente o di que puedes transferir. "
-            "Sé breve (2-4 frases) y evita URLs si no vienen al caso."
-        )
-        messages = [{"role": "system", "content": system_prompt}]
-        ctx = _get_recent_messages_for_ai(wa_id, limit=12)
-        messages.extend(ctx)
-        # Asegurar último input
-        if user_text and (not ctx or (ctx and (ctx[-1].get('content') or '').strip() != user_text.strip())):
-            messages.append({"role": "user", "content": user_text})
-        url = "https://openrouter.ai/api/v1/chat/completions"
-        headers = {
-            "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-            "Content-Type": "application/json",
-            "HTTP-Referer": os.getenv('OPENROUTER_SITE_URL', STORE_URL) or "",
-            "X-Title": os.getenv('OPENROUTER_APP_NAME', 'Fanty WhatsApp Bot'),
-        }
-        body = {
-            "model": OPENROUTER_MODEL,
-            "messages": messages,
-            "temperature": 0.5,
-            "max_tokens": 300,
-        }
-        resp = requests.post(url, headers=headers, json=body, timeout=12)
-        if resp.status_code >= 200 and resp.status_code < 300:
-            data = resp.json()
-            choices = (data or {}).get('choices') or []
-            if choices:
-                content = ((choices[0].get('message') or {}).get('content') or '').strip()
-                return content[:1800]
-        else:
-            try:
-                print('IA error:', resp.status_code, resp.text)
-            except Exception:
-                pass
-        return ""
-    except Exception as e:
-        try:
-            print('Excepción IA:', e)
-        except Exception:
-            pass
-        return ""
+    ctx = _get_recent_messages_for_ai(wa_id, limit=12)
+    msgs = list(ctx)
+    if user_text and (not msgs or (msgs and (msgs[-1].get('content') or '').strip() != user_text.strip())):
+        msgs.append({"role": "user", "content": user_text})
+    return ai_service_generate_reply(msgs)
 
 
 def _post_wa(payload: dict):
@@ -1432,6 +1432,8 @@ def _build_preview_response_for_node(node_id: str):
     # Redirigir automáticamente si es start con next
     if ntype == 'start' and node.get('next'):
         return _build_preview_response_for_node(node.get('next'))
+    if ntype == 'trigger' and node.get('next'):
+        return _build_preview_response_for_node(node.get('next'))
 
     # Texto + assets (HTML)
     text = (node.get('text') or '').strip()
@@ -1555,6 +1557,31 @@ def send_message():
                 kws = [k.strip().lower() for k in kws_raw.split(',') if k.strip()]
                 if any(k and k in low for k in kws):
                     return jsonify(_build_preview_response_for_node(nid))
+        except Exception:
+            pass
+        # Triggers en preview (sin IA real): keywords/deeplink saltan; ai muestra aviso
+        try:
+            for nid, ndef in flow_nodes.items():
+                if (ndef.get('type') or '').lower() != 'trigger':
+                    continue
+                nxt = (ndef.get('next') or '').strip()
+                if not nxt:
+                    continue
+                ttype = (ndef.get('trigger_type') or 'keywords').lower()
+                if ttype == 'keywords':
+                    pats = [p.strip().lower() for p in (ndef.get('patterns') or '').split(',') if p.strip()]
+                    if pats and any(p and p in low for p in pats):
+                        return jsonify(_build_preview_response_for_node(nxt))
+                elif ttype == 'deeplink':
+                    lines = []
+                    for ln in (ndef.get('patterns') or '').split('\n'):
+                        ln = ln.strip().lower()
+                        if ln:
+                            lines.append(ln)
+                    if lines and any(ln == low for ln in lines):
+                        return jsonify(_build_preview_response_for_node(nxt))
+                elif ttype == 'ai':
+                    return jsonify({'response': '🤖 (Trigger IA) La IA decidiría iniciar este flujo.'})
         except Exception:
             pass
         greetings = ("hola", "holi", "buenas", "buenos días", "buenas tardes", "buenas noches")
