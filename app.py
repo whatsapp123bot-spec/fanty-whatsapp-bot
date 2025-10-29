@@ -361,22 +361,11 @@ def get_user_flow_node(wa_id: str) -> str | None:
 
 
 def has_active_flow(wa_id: str, window_sec: int = 15*60) -> bool:
-    """Heurística: si hay flow_node o hubo un mensaje interactivo de salida reciente, consideramos flujo activo."""
+    """Considera activo SOLO si users.flow_node apunta a un nodo existente."""
     try:
         node = get_user_flow_node(wa_id)
-        if node:
-            # Además verifica que exista en la config
-            if node in ((FLOW_CONFIG or {}).get('nodes') or {}):
-                return True
-        # Fallback: revisar últimos mensajes
-        row = db_execute(
-            "SELECT ts FROM messages WHERE wa_id=? AND direction='out' AND mtype='interactive' ORDER BY ts DESC, id DESC LIMIT 1",
-            (wa_id,), fetch='one'
-        )
-        ts = (row.get('ts') if isinstance(row, dict) else (row[0] if row else 0)) or 0
-        if ts:
-            now = int(time.time())
-            return (now - int(ts)) <= max(60, int(window_sec))
+        if node and node in ((FLOW_CONFIG or {}).get('nodes') or {}):
+            return True
     except Exception:
         pass
     return False
@@ -810,7 +799,7 @@ def webhook():
                                 responded = False
                                 if flow_enabled and flow_nodes:
                                     # Si el usuario ya está en un flujo, NO re-evaluar triggers ni nodos de inicio
-                                    if has_active_flow(from_wa, window_sec=120):
+                                    if has_active_flow(from_wa):
                                         hint = "Por favor, selecciona una opción de los botones anteriores para continuar."
                                         try:
                                             if AI_ENABLED:
