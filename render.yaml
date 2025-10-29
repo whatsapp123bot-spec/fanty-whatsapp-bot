@@ -18,5 +18,7 @@ services:
         sync: false
       - key: CLOUDINARY_URL
         sync: false
+      - key: CLOUDINARY_STRICT
+        value: "1"
       - key: FLOW_ENABLED
         value: "1"

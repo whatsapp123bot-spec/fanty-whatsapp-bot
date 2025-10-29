@@ -81,8 +81,11 @@ las cargas desde el editor visual se subirán a Cloudinary y devolverán una URL
 Variables útiles:
 - `CLOUDINARY_URL` (obligatoria para activar)
 - `CLOUDINARY_FOLDER` (opcional, ej. `fanty/uploads`)
+- `CLOUDINARY_STRICT` (1 para exigir Cloudinary y no permitir fallback local; recomendado en producción)
 
 En Render, agrega estas variables en el panel de Environment.
+
+Nota: Los PDFs se suben como `resource_type=raw` en Cloudinary. En la consola de Cloudinary, revisa la pestaña/tabla “Raw” o filtra por tipo “Raw” para verlos dentro de la carpeta configurada.
 
 ## Base de datos
 

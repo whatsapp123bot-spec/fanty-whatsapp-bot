@@ -27,6 +27,7 @@ ALLOWED_UPLOADS = {'.pdf', '.jpg', '.jpeg', '.png'}
 
 # Cloudinary (opcional)
 CLOUDINARY_URL = os.getenv('CLOUDINARY_URL')  # formato: cloudinary://api_key:api_secret@cloud_name
+CLOUDINARY_STRICT = os.getenv('CLOUDINARY_STRICT', '0') == '1'  # Si 1, exigir Cloudinary (sin fallback local)
 if CLOUDINARY_URL and cloudinary:
     try:
         cloudinary.config(cloudinary_url=CLOUDINARY_URL)
@@ -1483,6 +1484,9 @@ def internal_upload():
                     print('⚠️ Cloudinary upload failed, falling back to local:', ce)
                 except Exception:
                     pass
+                if CLOUDINARY_STRICT:
+                    # En modo estricto, no permitir fallback local
+                    return jsonify({"error": "cloudinary_upload_failed", "detail": str(ce)}), 500
 
         # Fallback: guardar local en static/uploads
         base_name = secure_filename(os.path.basename(f.filename)) or 'file'
