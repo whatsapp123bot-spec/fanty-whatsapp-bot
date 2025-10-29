@@ -73,6 +73,22 @@ npm start
 
 Escanea el QR y prueba escribiendo "hola" desde otro teléfono. El bot responde con tu flujo actual.
 
+## Archivos y medios: Cloudinary (opcional)
+
+Si defines `CLOUDINARY_URL` en tu entorno (formato `cloudinary://api_key:api_secret@cloud_name`),
+las cargas desde el editor visual se subirán a Cloudinary y devolverán una URL pública segura.
+
+Variables útiles:
+- `CLOUDINARY_URL` (obligatoria para activar)
+- `CLOUDINARY_FOLDER` (opcional, ej. `fanty/uploads`)
+
+En Render, agrega estas variables en el panel de Environment.
+
+## Base de datos (nota)
+
+Por defecto se usa SQLite (`conversations.db`). Si quieres usar SQL gestionado (PostgreSQL en Render),
+avísame y migro el acceso a una capa compatible con `DATABASE_URL` (psycopg2/SQLAlchemy) para persistencia en la nube.
+
 ## Exponer a Internet (opcional)
 
 Con Ngrok:

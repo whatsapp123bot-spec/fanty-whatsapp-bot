@@ -5,6 +5,11 @@ import time
 import json
 from flask import Flask, request, render_template, jsonify, redirect, url_for, flash, g
 from werkzeug.utils import secure_filename
+try:
+    import cloudinary
+    import cloudinary.uploader
+except Exception:
+    cloudinary = None
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'dev-secret')
@@ -14,6 +19,15 @@ UPLOAD_DIR = os.path.join(BASE_DIR, 'static', 'uploads')
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 ALLOWED_UPLOADS = {'.pdf', '.jpg', '.jpeg', '.png'}
+
+# Cloudinary (opcional)
+CLOUDINARY_URL = os.getenv('CLOUDINARY_URL')  # formato: cloudinary://api_key:api_secret@cloud_name
+if CLOUDINARY_URL and cloudinary:
+    try:
+        cloudinary.config(cloudinary_url=CLOUDINARY_URL)
+        print('☁️ Cloudinary configurado')
+    except Exception as e:
+        print('⚠️ No se pudo configurar Cloudinary:', e)
 
 # Variables de entorno para WhatsApp Cloud API
 VERIFY_TOKEN = os.getenv("VERIFY_TOKEN", "fantasia123")
@@ -1360,6 +1374,19 @@ def internal_upload():
     if not _allowed_upload(f.filename):
         return jsonify({"error": "invalid type"}), 400
     try:
+        # Si está configurado Cloudinary, subir ahí
+        if CLOUDINARY_URL and cloudinary:
+            resource_type = 'image' if ext.lower() in ('.jpg', '.jpeg', '.png') else 'raw'
+            up = cloudinary.uploader.upload(
+                f.stream,
+                resource_type=resource_type,
+                folder=os.getenv('CLOUDINARY_FOLDER', 'fanty/uploads')
+            )
+            url = up.get('secure_url') or up.get('url')
+            name = up.get('public_id').split('/')[-1] if up.get('public_id') else secure_filename(f.filename)
+            return jsonify({"url": url, "name": name, "ext": ext.lower()}), 200
+
+        # Fallback: guardar local en static/uploads
         base = secure_filename(os.path.basename(f.filename)) or 'file'
         name = base
         dest = os.path.join(UPLOAD_DIR, name)
