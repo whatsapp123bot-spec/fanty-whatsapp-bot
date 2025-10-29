@@ -662,12 +662,12 @@ def webhook():
                         if msg_type == 'text':
                             text = message.get('text', {}).get('body', '')
                         elif msg_type == 'interactive':
+                            # Solo para logging, tomamos el título del botón/lista como texto
                             interactive = message.get('interactive', {})
-                            # Puede ser button_reply o list_reply
-                            if interactive.get('type') == 'button_reply':
-                                text = interactive.get('button_reply', {}).get('title', '')
-                            elif interactive.get('type') == 'list_reply':
-                                text = interactive.get('list_reply', {}).get('title', '')
+                            if (interactive.get('type') == 'button_reply'):
+                                text = (interactive.get('button_reply') or {}).get('title', '')
+                            elif (interactive.get('type') == 'list_reply'):
+                                text = (interactive.get('list_reply') or {}).get('title', '')
                         else:
                             print(f"ℹ️ Tipo de mensaje no manejado: {msg_type}")
                         print(f"📱 DE: {from_wa} | TIPO: {msg_type} | TEXTO: {text}")
@@ -763,10 +763,13 @@ def webhook():
                                 itype = interactive.get('type')
                                 reply_id = None
                                 if itype == 'button_reply':
-                                    reply_id = interactive.get('button_reply', {}).get('id')
+                                    reply_id = (interactive.get('button_reply') or {}).get('id')
                                 elif itype == 'list_reply':
-                                    reply_id = interactive.get('list_reply', {}).get('id')
-                                print("🔘 INTERACTIVE ID:", reply_id)
+                                    reply_id = (interactive.get('list_reply') or {}).get('id')
+                                try:
+                                    print("🔘 INTERACTIVE:", { 'type': itype, 'id': reply_id, 'raw': interactive })
+                                except Exception:
+                                    pass
                                 # Si hay chat humano activo, ignorar flujo para interactivos también
                                 try:
                                     row = db_execute("SELECT human_requested FROM users WHERE wa_id=?", (from_wa,), fetch='one')
@@ -789,6 +792,31 @@ def webhook():
                                 if reply_id and isinstance(reply_id, str) and reply_id.startswith('FLOW:'):
                                     next_id = reply_id.split(':', 1)[1]
                                     send_flow_node(from_wa, next_id)
+                                else:
+                                    # Compatibilidad con IDs clásicos si no son del flujo
+                                    rid = (reply_id or '').upper()
+                                    try:
+                                        if rid == 'MENU_PRINCIPAL' and (FLOW_CONFIG or {}).get('start_node'):
+                                            send_flow_node(from_wa, (FLOW_CONFIG or {}).get('start_node'))
+                                        elif rid in ('VER_CATALOGO', 'VER_CATALOGO_PDF', 'VOLVER_CATALOGO'):
+                                            if ((FLOW_CONFIG or {}).get('nodes') or {}).get('categorias'):
+                                                send_flow_node(from_wa, 'categorias')
+                                            else:
+                                                send_whatsapp_buttons_categories(from_wa)
+                                        elif rid in ('HABLAR_ASESOR', 'ASESOR', 'CONTACTAR_ASESOR'):
+                                            send_whatsapp_buttons_advisor(from_wa)
+                                        elif rid in ('MAS_OPCIONES', 'MAS', 'OPCIONES'):
+                                            send_whatsapp_more_options(from_wa)
+                                        elif rid == 'VER_PAGOS':
+                                            send_whatsapp_buttons_payments(from_wa)
+                                        elif rid in ('VER_ENVIO', 'VER_ENVIOS'):
+                                            send_whatsapp_buttons_shipping(from_wa)
+                                        elif rid in ('UBIC_LIMA', 'LIMA'):
+                                            send_whatsapp_buttons_shipping_lima(from_wa)
+                                        elif rid in ('UBIC_PROVINCIAS', 'PROVINCIAS'):
+                                            send_whatsapp_buttons_shipping_provincias(from_wa)
+                                    except Exception:
+                                        pass
                                 # Para cualquier otro id, no respondemos (todo se gestiona desde el panel)
                                 
                     else:
