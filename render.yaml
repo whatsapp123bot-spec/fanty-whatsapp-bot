@@ -24,3 +24,5 @@ services:
         value: "10"
       - key: FLOW_ENABLED
         value: "1"
+      - key: PREFER_ENV_WHATSAPP
+        value: "1"

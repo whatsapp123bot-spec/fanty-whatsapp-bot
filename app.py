@@ -41,6 +41,7 @@ if CLOUDINARY_URL and cloudinary:
 VERIFY_TOKEN = os.getenv("VERIFY_TOKEN", "fantasia123")
 WHATSAPP_TOKEN = os.getenv("WHATSAPP_TOKEN")
 PHONE_NUMBER_ID = os.getenv("PHONE_NUMBER_ID")
+PREFER_ENV_WHATSAPP = os.getenv("PREFER_ENV_WHATSAPP", "0") == "1"
 
 # URLs de negocio (configurables por entorno, con valores por defecto actuales)
 STORE_URL = os.getenv("STORE_URL", "https://lenceria-fantasia-intima.onrender.com/")
@@ -834,6 +835,33 @@ def send_whatsapp_text(to: str, body: str):
 
 def _post_wa(payload: dict):
     """Helper para enviar payloads con la cuenta activa de la request, del usuario, o por defecto."""
+    # Si se pide priorizar credenciales del entorno (Render), usarlas directamente
+    if PREFER_ENV_WHATSAPP and PHONE_NUMBER_ID and WHATSAPP_TOKEN:
+        pnid = PHONE_NUMBER_ID
+        token = WHATSAPP_TOKEN
+        url = f"https://graph.facebook.com/v19.0/{pnid}/messages"
+        headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+        try:
+            print("➡️ Enviando WA (env preferido):", payload)
+            resp = requests.post(url, headers=headers, json=payload, timeout=10)
+            print("⬅️ Respuesta WA (env preferido):", resp.status_code, resp.text)
+            # Log básico
+            try:
+                to = payload.get('to')
+                if payload.get('type') == 'text':
+                    body = (payload.get('text') or {}).get('body') or ''
+                    save_outgoing_message(to, body, 'text')
+                elif payload.get('type') == 'interactive':
+                    body = ((payload.get('interactive') or {}).get('body') or {}).get('text') or ''
+                    if body:
+                        save_outgoing_message(to, body, 'interactive')
+            except Exception:
+                pass
+            return {'status': resp.status_code, 'body': resp.text}
+        except Exception as e:
+            print('Excepción enviando WA (env preferido):', e)
+            return {'status': 0, 'body': str(e)}
+
     # Resolver cuenta: (1) g.account; (2) por destinatario en users; (3) por defecto; (4) ENV
     acc = None
     try:
@@ -1438,6 +1466,7 @@ def internal_health():
         "cloudinary_folder": os.getenv('CLOUDINARY_FOLDER', 'fanty/uploads'),
         "db_backend": "postgres" if DB_IS_POSTGRES else "sqlite",
         "bridge_url": BRIDGE_URL,
+        "prefer_env_whatsapp": PREFER_ENV_WHATSAPP,
     }
     # Intentar consultar suscripciones (si hay token y phone_number_id)
     if WHATSAPP_TOKEN and PHONE_NUMBER_ID:
