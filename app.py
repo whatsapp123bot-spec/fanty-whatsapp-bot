@@ -1418,6 +1418,10 @@ def internal_health():
         "verify_token_set": bool(VERIFY_TOKEN),
         "whatsapp_token_set": bool(WHATSAPP_TOKEN),
         "phone_number_id": PHONE_NUMBER_ID or None,
+        "cloudinary_configured": bool(CLOUDINARY_URL and cloudinary),
+        "cloudinary_strict": CLOUDINARY_STRICT,
+        "cloudinary_folder": os.getenv('CLOUDINARY_FOLDER', 'fanty/uploads'),
+        "db_backend": "postgres" if DB_IS_POSTGRES else "sqlite",
     }
     # Intentar consultar suscripciones (si hay token y phone_number_id)
     if WHATSAPP_TOKEN and PHONE_NUMBER_ID:
@@ -1430,6 +1434,72 @@ def internal_health():
         except Exception as e:
             info["subscribed_apps_error"] = str(e)
     return jsonify(info)
+
+
+@app.post('/internal/migrate_asset_to_cloudinary')
+def internal_migrate_asset_to_cloudinary():
+    """Sube un archivo local (static/uploads) a Cloudinary y devuelve su nueva URL.
+    Protegido con ?key=VERIFY_TOKEN o JSON { key }.
+    Body JSON/form:
+      - url (opcional) URL local que contiene el nombre
+      - name (opcional) nombre del archivo en static/uploads
+      - delete_local: '1' para borrar el archivo local tras subir
+    Requiere CLOUDINARY_URL configurado.
+    """
+    key = request.args.get('key') or (request.json or {}).get('key') if request.is_json else request.form.get('key')
+    if key != VERIFY_TOKEN:
+        return jsonify({"error": "forbidden"}), 403
+    if not (CLOUDINARY_URL and cloudinary):
+        return jsonify({"error": "cloudinary_not_configured"}), 400
+    data = request.get_json(silent=True) or request.form or {}
+    url_val = (data.get('url') or '').strip()
+    name = (data.get('name') or '').strip()
+    delete_local = (data.get('delete_local') == '1') or (request.args.get('delete_local') == '1')
+    if not name and url_val:
+        try:
+            from urllib.parse import urlparse
+            p = urlparse(url_val)
+            name = os.path.basename(p.path)
+        except Exception:
+            name = ''
+    if not name:
+        return jsonify({"error": "missing name/url"}), 400
+    local_path = os.path.join(UPLOAD_DIR, secure_filename(name))
+    if not os.path.exists(local_path):
+        return jsonify({"error": "file_not_found", "path": local_path}), 404
+    try:
+        # Determinar resource_type por extensión
+        _, ext = os.path.splitext(name.lower())
+        resource_type = 'image' if ext in ('.jpg', '.jpeg', '.png') else 'raw'
+        with open(local_path, 'rb') as fh:
+            up = cloudinary.uploader.upload(
+                fh,
+                resource_type=resource_type,
+                folder=os.getenv('CLOUDINARY_FOLDER', 'fanty/uploads'),
+                use_filename=True,
+                unique_filename=False,
+                filename=name
+            )
+        url = up.get('secure_url') or up.get('url')
+        public_id = up.get('public_id')
+        if delete_local:
+            try:
+                os.remove(local_path)
+            except Exception:
+                pass
+        return jsonify({
+            "url": url,
+            "name": name,
+            "provider": "cloudinary",
+            "public_id": public_id,
+            "resource_type": resource_type
+        }), 200
+    except Exception as e:
+        try:
+            print('❌ migrate_asset_to_cloudinary error:', e)
+        except Exception:
+            pass
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route('/internal/upload', methods=['POST'])
