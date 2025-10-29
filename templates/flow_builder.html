@@ -95,6 +95,10 @@
         <h3 style="margin:0;">Nodos</h3>
   <button class="btn add" onclick="openAddNodeMenu()">+ Añadir nodo</button>
       </div>
+      <div style="margin-top:8px; display:flex; align-items:center; gap:8px;">
+        <input type="checkbox" id="flowEnabledToggle" />
+        <label for="flowEnabledToggle" style="font-size:13px; color:var(--muted)">Flujo activo</label>
+      </div>
       <div style="margin-top:8px;">
         <label style="font-size:12px; color:var(--muted)">Nodo inicial</label>
         <select id="startNode" style="width:100%; padding:6px 8px; border:1px solid #ddd; border-radius:8px;"></select>
@@ -131,7 +135,6 @@
       <div class="choices">
         <button onclick="addNodeOfType('action')">Acción (mensaje + botones)</button>
         <button onclick="addNodeOfType('advisor')">Conversar con asesor (número WhatsApp)</button>
-        <button onclick="addNodeOfType('start')">Inicio (palabras clave)</button>
         <button onclick="addNodeOfType('trigger')">Trigger (keywords / deeplink / IA)</button>
       </div>
       <div style="text-align:right; margin-top:10px;"><button class="btn del" onclick="closeAddNodeMenu()">Cerrar</button></div>
@@ -172,23 +175,13 @@
     function ensureDefaults(){
       if (typeof flow.enabled !== 'boolean') flow.enabled = true;
       if (!flow.nodes) flow.nodes = {};
-      // Si no hay nodos, crear flujo base mínimo: inicio -> welcome
+      // Si no hay nodos, crear flujo base con trigger (saludo) -> welcome
       if (Object.keys(flow.nodes).length === 0) {
         flow.nodes = {
-          'start': {
-            type: 'start',
-            keywords: 'hola, holi, buenas',
-            next: 'welcome',
-            pos: { x: 40, y: 40 }
-          },
-          'welcome': {
-            type: 'action',
-            text: '👋 Hola, soy Fanty, tu asistente virtual. ¡Bienvenida!',
-            buttons: [],
-            pos: { x: 420, y: 40 }
-          }
+          'trigger_1': { type: 'trigger', trigger_type: 'keywords', patterns: 'hola, holi, buenas', enabled: true, next: 'welcome', pos: { x: 40, y: 40 } },
+          'welcome': { type: 'action', text: '👋 Hola, soy Fanty, tu asistente virtual. ¡Bienvenida!', buttons: [], pos: { x: 420, y: 40 } }
         };
-        flow.start_node = 'start';
+        flow.start_node = 'welcome';
       }
       flow.start_node = flow.start_node || Object.keys(flow.nodes)[0] || null;
       for (const k of Object.keys(flow.nodes)) {
@@ -211,6 +204,13 @@
 
       nodeListEl.innerHTML = '';
       Object.keys(flow.nodes).forEach(id => nodeListEl.appendChild(renderNodeListItem(id)));
+
+      // Toggle de flujo activo
+      const flowToggle = document.getElementById('flowEnabledToggle');
+      if (flowToggle) {
+        flowToggle.checked = !!flow.enabled;
+        flowToggle.onchange = () => { flow.enabled = !!flowToggle.checked; updateStatusChip(); };
+      }
 
       // Canvas nodes
       nodesEl.innerHTML = '';
@@ -323,20 +323,21 @@
         const hint = document.createElement('div'); hint.className='legend'; hint.textContent='Activa/desactiva y edita las URLs que quieras mostrar.';
         linksBox.appendChild(list); linksBox.appendChild(hint);
         el.appendChild(linksBox);
-      } else if ((node.type||'action') === 'start') {
-        // Nota para palabras clave (sin textarea)
-        const note = document.createElement('div'); note.className='legend';
-        note.textContent = 'Escriba las palabras clave. Este nodo inicia el flujo.';
-        el.appendChild(note);
       } else if ((node.type||'action') === 'trigger') {
         // Config UI para trigger
         const row = document.createElement('div'); row.style.display='grid'; row.style.gridTemplateColumns='1fr 1fr'; row.style.gap='8px'; row.style.margin='6px 0';
         const lab = document.createElement('label'); lab.textContent='Tipo de trigger'; lab.style.fontSize='13px'; lab.style.color='#333';
+        const enabledWrap = document.createElement('div'); enabledWrap.style.display='flex'; enabledWrap.style.alignItems='center'; enabledWrap.style.gap='6px';
+        const en = document.createElement('input'); en.type='checkbox'; en.checked = (typeof node.enabled==='boolean') ? !!node.enabled : true;
+        en.onchange = ()=>{ flow.nodes[id].enabled = !!en.checked; };
+        const enLab = document.createElement('label'); enLab.textContent='Activo'; enLab.style.fontSize='13px'; enLab.style.color='#333';
+        enabledWrap.appendChild(en); enabledWrap.appendChild(enLab);
         const sel = document.createElement('select');
         ;['keywords','deeplink','ai'].forEach(t=>{ const o=document.createElement('option'); o.value=t; o.textContent=t; sel.appendChild(o); });
         sel.value = node.trigger_type || 'keywords';
         sel.onchange = ()=>{ flow.nodes[id].trigger_type = sel.value; refresh(); };
         row.appendChild(lab); row.appendChild(sel); el.appendChild(row);
+        el.appendChild(enabledWrap);
         if ((node.trigger_type||'keywords') === 'keywords') {
           const kw = document.createElement('input'); kw.placeholder='Palabras clave separadas por coma'; kw.value = node.patterns||'';
           kw.style.width='100%'; kw.oninput = ()=>{ flow.nodes[id].patterns = kw.value; }; el.appendChild(kw);
@@ -354,32 +355,7 @@
         el.appendChild(ta);
       }
 
-  if ((node.type||'action') === 'start') {
-        // Toggle de encendido/apagado global del flujo
-        const toggleWrap = document.createElement('div'); toggleWrap.style.display='flex'; toggleWrap.style.alignItems='center'; toggleWrap.style.gap='8px'; toggleWrap.style.margin='4px 0 6px';
-        const toggle = document.createElement('input'); toggle.type='checkbox'; toggle.checked = !!flow.enabled; toggle.id = `en_${id}`;
-        toggle.onchange = () => { flow.enabled = !!toggle.checked; updateStatusChip(); };
-        const tl = document.createElement('label'); tl.setAttribute('for', `en_${id}`); tl.textContent = 'Flujo activo'; tl.style.fontSize='13px'; tl.style.color='#333';
-        toggleWrap.appendChild(toggle); toggleWrap.appendChild(tl); el.appendChild(toggleWrap);
-
-        const kw = document.createElement('input'); kw.placeholder='Palabras clave separadas por coma (hola, holi, buenas)'; kw.value = (node.keywords||'');
-        kw.style.width = '100%'; kw.oninput = () => { flow.nodes[id].keywords = kw.value; };
-        el.appendChild(kw);
-
-        // Frases exactas (una por línea) para activar desde links con texto predefinido
-        const ex = document.createElement('textarea');
-        ex.placeholder = 'Frases exactas (una por línea) — para links wa.me?text=...';
-        ex.value = node.exact || '';
-        ex.style.minHeight = '60px';
-        ex.addEventListener('input', () => { flow.nodes[id].exact = ex.value; });
-        el.appendChild(ex);
-
-        // Conector único para salida del nodo de inicio
-        const sc = document.createElement('span'); sc.className='start-connector'; sc.title='Arrastra para conectar el inicio con otro nodo';
-        sc.dataset.startConnector = id;
-        sc.addEventListener('mousedown', (e) => startConnect(e, id, null, sc));
-        el.appendChild(sc);
-      }
+  }
       if ((node.type||'action') === 'trigger') {
         const sc2 = document.createElement('span'); sc2.className='start-connector'; sc2.title='Arrastra para conectar este trigger con otro nodo';
         sc2.dataset.startConnector = id;
@@ -387,31 +363,7 @@
         el.appendChild(sc2);
       }
 
-      if ((node.type||'action') !== 'advisor' && (node.type||'action') !== 'start') {
-        // Zona de assets (imagenes/documentos)
-        const assets = document.createElement('div'); assets.className='assets';
-        const actions = document.createElement('div'); actions.className='actions';
-        const addFile = document.createElement('button'); addFile.textContent='Agregar archivo';
-        addFile.onclick = (ev) => { ev.preventDefault(); handleUpload(id, 'application/pdf', 'file'); };
-        const addImg = document.createElement('button'); addImg.textContent='Agregar foto';
-        addImg.onclick = (ev) => { ev.preventDefault(); handleUpload(id, 'image/*', 'image'); };
-        actions.appendChild(addFile); actions.appendChild(addImg); assets.appendChild(actions);
-        const list = document.createElement('div'); list.className='list';
-        (node.assets||[]).forEach((a, ai) => {
-          const item = document.createElement('div'); item.className='asset-item';
-          if (a.type==='image') {
-            const img = document.createElement('img'); img.src = a.url; img.alt=a.name||'imagen'; item.appendChild(img);
-          } else {
-            const ic = document.createElement('span'); ic.textContent='📄'; item.appendChild(ic);
-          }
-          const name = document.createElement('a'); name.href=a.url; name.target='_blank'; name.className='name'; name.textContent=a.name||a.url; item.appendChild(name);
-          const rm = document.createElement('button'); rm.textContent='Quitar'; rm.onclick = (ev)=>{ ev.preventDefault(); removeAsset(id, ai); };
-          item.appendChild(rm);
-          list.appendChild(item);
-        });
-  const help = document.createElement('div'); help.className='legend'; help.textContent='Se envían antes del texto. Admite PDF, JPG, PNG. Máx. ' + UPLOAD_MAX_MB + ' MB.';
-        assets.appendChild(list); assets.appendChild(help);
-        el.appendChild(assets);
+      if ((node.type||'action') !== 'advisor') {
         const btns = document.createElement('div'); btns.className='btns';
         (node.buttons||[]).forEach((b, idx) => btns.appendChild(renderButtonRow(id, b, idx)));
         const add = document.createElement('button'); add.className='addRow'; add.textContent='+ Añadir botón';
@@ -450,14 +402,12 @@
     function openAddNodeMenu(){ overlay.style.display='flex'; }
     function closeAddNodeMenu(){ overlay.style.display='none'; }
     function addNodeOfType(type){
-      const id = uid(type==='start' ? 'start' : (type==='advisor'?'advisor':(type==='trigger'?'trigger':'node')));
+      const id = uid(type==='advisor'?'advisor':(type==='trigger'?'trigger':'node'));
       const base = { type: type||'action', text: '', buttons: [], pos: null };
       if (type==='advisor') base.phone='';
-      if (type==='start') base.keywords='hola, holi, buenas';
-      if (type==='trigger') { base.trigger_type='keywords'; base.patterns=''; }
+      if (type==='trigger') { base.trigger_type='keywords'; base.patterns=''; base.enabled = true; }
       flow.nodes[id] = base;
-      if (type==='start') flow.start_node = id;
-      if (!flow.start_node) flow.start_node = id;
+      if (!flow.start_node) flow.start_node = id; // como referencia de menú principal
       closeAddNodeMenu();
       refresh();
     }
@@ -709,21 +659,11 @@
           const tm = parseInt(flow.nodes[k].timeout_min||flow.nodes[k].human_timeout_min||15, 10);
           flow.nodes[k].timeout_min = isNaN(tm)?15:Math.max(1, Math.min(720, tm));
         }
-        if (flow.nodes[k].type==='start') {
-          flow.nodes[k].keywords = (flow.nodes[k].keywords||'').trim();
-          const exact = (flow.nodes[k].exact||'').trim();
-          if (exact) {
-            flow.nodes[k].exact = exact;
-          } else {
-            delete flow.nodes[k].exact;
-          }
-          if (flow.nodes[k].next) flow.nodes[k].next = String(flow.nodes[k].next);
-          // El nodo inicio no usa texto; limpiarlo si existe
-          if ('text' in flow.nodes[k]) delete flow.nodes[k].text;
-        }
+        // (start eliminado del editor)
         if (flow.nodes[k].type==='trigger') {
           const t = (flow.nodes[k].trigger_type||'keywords');
           flow.nodes[k].trigger_type = t;
+          flow.nodes[k].enabled = (typeof flow.nodes[k].enabled === 'boolean') ? !!flow.nodes[k].enabled : true;
           if (t === 'ai') {
             const ins = (flow.nodes[k].instruction||'').toString();
             if (ins.trim()) flow.nodes[k].instruction = ins.trim(); else delete flow.nodes[k].instruction;
@@ -736,7 +676,7 @@
           if (flow.nodes[k].next) flow.nodes[k].next = String(flow.nodes[k].next);
           if ('text' in flow.nodes[k]) delete flow.nodes[k].text;
         }
-        if (!Array.isArray(flow.nodes[k].assets)) delete flow.nodes[k].assets; // solo guardar si existe bien formada
+        // assets eliminados del editor
       }
   const payload = JSON.stringify(flow, null, 2);
       // Guardar por fetch JSON para no salir del builder
@@ -778,48 +718,7 @@
       chip.classList.toggle('off', !on);
     }
 
-    // Upload helpers
-  async function handleUpload(nodeId, accept, kind){
-      try {
-        const input = document.createElement('input'); input.type='file'; input.accept = accept;
-        const picked = await new Promise((resolve) => { input.onchange = () => resolve(input.files && input.files[0]); input.click(); });
-        if (!picked) return;
-        if (picked.size > UPLOAD_MAX_MB * 1024 * 1024) {
-          alert('Archivo demasiado grande. Máximo ' + UPLOAD_MAX_MB + ' MB.');
-          return;
-        }
-        const fd = new FormData(); fd.append('file', picked);
-        const res = await fetch('/internal/upload?key={{ key }}', { method:'POST', body: fd });
-        if (!res.ok) { alert('Error al subir archivo'); return; }
-        const data = await res.json();
-        if (!flow.nodes[nodeId].assets) flow.nodes[nodeId].assets = [];
-        const asset = { type: kind, url: data.url, name: data.name || picked.name };
-        if (data.provider) asset.provider = data.provider;
-        if (data.public_id) asset.public_id = data.public_id;
-        if (data.resource_type) asset.resource_type = data.resource_type;
-        flow.nodes[nodeId].assets.push(asset);
-        refresh();
-      } catch (err) {
-        console.error(err); alert('No se pudo subir el archivo.');
-      }
-    }
-    async function removeAsset(nodeId, idx){
-      const arr = flow.nodes[nodeId].assets||[];
-      const asset = arr[idx];
-      // Intentar borrar del backend si es Cloudinary o local file
-      try {
-        if (asset && (asset.provider === 'cloudinary' || asset.provider === 'local' || asset.url)){
-          const fd = new FormData();
-          fd.append('provider', asset.provider || 'local');
-          if (asset.public_id) fd.append('public_id', asset.public_id);
-          if (asset.resource_type) fd.append('resource_type', asset.resource_type);
-          if (asset.url) fd.append('url', asset.url);
-          if (asset.name) fd.append('name', asset.name);
-          await fetch('/internal/delete_asset?key={{ key }}', { method: 'POST', body: fd });
-        }
-      } catch (e) { console.warn('No se pudo eliminar remoto:', e); }
-      arr.splice(idx,1); refresh();
-    }
+    // Upload helpers eliminados
 
     // Zoom helpers
     function setZoom(nextZoom, pivotClientX, pivotClientY){

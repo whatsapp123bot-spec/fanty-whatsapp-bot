@@ -765,6 +765,8 @@ def webhook():
                                             for nid, ndef in flow_nodes.items():
                                                 if (ndef.get('type') or '').lower() != 'trigger':
                                                     continue
+                                                if 'enabled' in ndef and not ndef.get('enabled'):
+                                                    continue
                                                 nxt = (ndef.get('next') or '').strip()
                                                 if not nxt:
                                                     continue
@@ -800,10 +802,7 @@ def webhook():
                                     elif trigger_next:
                                         send_flow_node(from_wa, trigger_next)
                                         responded = True
-                                    elif (FLOW_CONFIG.get('start_node') and any(g in low for g in greetings)):
-                                        # Solo mostrar el inicio del flujo ante saludos comunes
-                                        send_flow_node(from_wa, FLOW_CONFIG.get('start_node'))
-                                        responded = True
+                                    # Ya no hay fallback automático a start_node; los triggers deciden el arranque
                                     # Si no hay start_node, no respondemos (flujo gestionado por panel)
                                 # Si no respondió el flujo, y hay IA activa, usar IA como fallback
                                 try:
@@ -1584,9 +1583,7 @@ def send_message():
                     return jsonify({'response': '🤖 (Trigger IA) La IA decidiría iniciar este flujo.'})
         except Exception:
             pass
-        greetings = ("hola", "holi", "buenas", "buenos días", "buenas tardes", "buenas noches")
-        if (FLOW_CONFIG or {}).get('start_node') and any(g in low for g in greetings):
-            return jsonify(_build_preview_response_for_node(FLOW_CONFIG.get('start_node')))
+        # Ya no se activa automáticamente por saludo; usar triggers
     # Fallback de IA en vista previa (texto informativo; no llama a la API real)
     if AI_ENABLED:
         return jsonify({'response': '🤖 (IA) No hubo match en el flujo. La IA respondería al usuario en WhatsApp.'})
