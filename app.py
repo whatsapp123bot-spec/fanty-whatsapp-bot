@@ -10,6 +10,11 @@ try:
     import cloudinary.uploader
 except Exception:
     cloudinary = None
+try:
+    import psycopg2
+    import psycopg2.extras
+except Exception:
+    psycopg2 = None
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'dev-secret')
@@ -47,29 +52,76 @@ FLOW_JSON_PATH = os.path.join(BASE_DIR, 'flow.json')
 FLOW_CONFIG: dict = {}
 CONV_DB_PATH = os.path.join(BASE_DIR, 'conversations.db')
 
+# -------- DB helper (SQLite local / Postgres en Render) --------
+DATABASE_URL = os.getenv('DATABASE_URL')
+DB_IS_POSTGRES = bool(DATABASE_URL and DATABASE_URL.startswith(('postgres://', 'postgresql://')) and psycopg2)
+
+def _get_conn():
+    if DB_IS_POSTGRES:
+        return psycopg2.connect(DATABASE_URL)
+    return sqlite3.connect(CONV_DB_PATH)
+
+def _adapt_query(query: str):
+    if DB_IS_POSTGRES:
+        return query.replace('?', '%s')
+    return query
+
+def db_execute(query: str, params: tuple = (), fetch: str | None = None):
+    conn = _get_conn()
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor if DB_IS_POSTGRES else None)
+    try:
+        cur.execute(_adapt_query(query), params or ())
+        result = None
+        if fetch == 'one':
+            result = cur.fetchone()
+        elif fetch == 'all':
+            result = cur.fetchall()
+        conn.commit()
+        return result
+    finally:
+        try:
+            cur.close()
+        except Exception:
+            pass
+        conn.close()
+
 # -------- Multi-cuenta WhatsApp (configurable desde panel) --------
 def init_accounts_db():
     try:
-        conn = sqlite3.connect(CONV_DB_PATH)
-        cur = conn.cursor()
-        cur.execute(
-            """
-            CREATE TABLE IF NOT EXISTS accounts (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                label TEXT,
-                phone_number_id TEXT,
-                whatsapp_token TEXT,
-                verify_token TEXT,
-                is_default INTEGER DEFAULT 0
+        if DB_IS_POSTGRES:
+            db_execute(
+                """
+                CREATE TABLE IF NOT EXISTS accounts (
+                    id SERIAL PRIMARY KEY,
+                    label TEXT,
+                    phone_number_id TEXT,
+                    whatsapp_token TEXT,
+                    verify_token TEXT,
+                    is_default INTEGER DEFAULT 0
+                )
+                """
             )
-            """
-        )
-        # Asegurar columna account_id en users
-        try:
-            cur.execute("ALTER TABLE users ADD COLUMN account_id INTEGER")
-        except Exception:
-            pass
-        conn.commit(); conn.close()
+            try:
+                db_execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS account_id INTEGER")
+            except Exception:
+                pass
+        else:
+            db_execute(
+                """
+                CREATE TABLE IF NOT EXISTS accounts (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    label TEXT,
+                    phone_number_id TEXT,
+                    whatsapp_token TEXT,
+                    verify_token TEXT,
+                    is_default INTEGER DEFAULT 0
+                )
+                """
+            )
+            try:
+                db_execute("ALTER TABLE users ADD COLUMN account_id INTEGER")
+            except Exception:
+                pass
     except Exception as e:
         print('⚠️ Error preparando tabla accounts:', e)
 
@@ -77,26 +129,24 @@ def init_accounts_db():
 def ensure_default_account_from_env():
     """Si no hay cuentas, crea una por defecto usando las variables de entorno actuales."""
     try:
-        conn = sqlite3.connect(CONV_DB_PATH); cur = conn.cursor()
-        cur.execute("SELECT COUNT(1) FROM accounts")
-        cnt = cur.fetchone()[0]
+        row = db_execute("SELECT COUNT(1) AS c FROM accounts", (), fetch='one')
+        cnt = (row.get('c') if isinstance(row, dict) else (row[0] if row else 0)) if row is not None else 0
         if cnt == 0 and PHONE_NUMBER_ID and WHATSAPP_TOKEN:
-            cur.execute(
+            db_execute(
                 "INSERT INTO accounts(label, phone_number_id, whatsapp_token, verify_token, is_default) VALUES (?,?,?,?,1)",
-                ("Cuenta principal", PHONE_NUMBER_ID, WHATSAPP_TOKEN, VERIFY_TOKEN, 1)
+                ("Cuenta principal", PHONE_NUMBER_ID, WHATSAPP_TOKEN, VERIFY_TOKEN)
             )
-            conn.commit()
-        conn.close()
     except Exception as e:
         print('⚠️ No se pudo crear cuenta por defecto desde ENV:', e)
 
 
 def get_default_account():
     try:
-        conn = sqlite3.connect(CONV_DB_PATH); cur = conn.cursor()
-        cur.execute("SELECT id,label,phone_number_id,whatsapp_token,verify_token,is_default FROM accounts WHERE is_default=1 ORDER BY id LIMIT 1")
-        row = cur.fetchone(); conn.close()
-        if not row: return None
+        row = db_execute("SELECT id,label,phone_number_id,whatsapp_token,verify_token,is_default FROM accounts WHERE is_default=1 ORDER BY id LIMIT 1", (), fetch='one')
+        if not row:
+            return None
+        if isinstance(row, dict):
+            return row
         return { 'id': row[0], 'label': row[1], 'phone_number_id': row[2], 'whatsapp_token': row[3], 'verify_token': row[4], 'is_default': row[5] }
     except Exception:
         return None
@@ -104,21 +154,22 @@ def get_default_account():
 
 def get_account_by_phone_number_id(pnid: str):
     try:
-        conn = sqlite3.connect(CONV_DB_PATH); cur = conn.cursor()
-        cur.execute("SELECT id,label,phone_number_id,whatsapp_token,verify_token,is_default FROM accounts WHERE phone_number_id=?", (pnid,))
-        row = cur.fetchone(); conn.close()
-        if not row: return None
+        row = db_execute("SELECT id,label,phone_number_id,whatsapp_token,verify_token,is_default FROM accounts WHERE phone_number_id=?", (pnid,), fetch='one')
+        if not row:
+            return None
+        if isinstance(row, dict):
+            return row
         return { 'id': row[0], 'label': row[1], 'phone_number_id': row[2], 'whatsapp_token': row[3], 'verify_token': row[4], 'is_default': row[5] }
     except Exception:
         return None
 
-
 def get_account_by_verify_token(vtok: str):
     try:
-        conn = sqlite3.connect(CONV_DB_PATH); cur = conn.cursor()
-        cur.execute("SELECT id,label,phone_number_id,whatsapp_token,verify_token,is_default FROM accounts WHERE verify_token=?", (vtok,))
-        row = cur.fetchone(); conn.close()
-        if not row: return None
+        row = db_execute("SELECT id,label,phone_number_id,whatsapp_token,verify_token,is_default FROM accounts WHERE verify_token=?", (vtok,), fetch='one')
+        if not row:
+            return None
+        if isinstance(row, dict):
+            return row
         return { 'id': row[0], 'label': row[1], 'phone_number_id': row[2], 'whatsapp_token': row[3], 'verify_token': row[4], 'is_default': row[5] }
     except Exception:
         return None
@@ -126,113 +177,142 @@ def get_account_by_verify_token(vtok: str):
 
 def list_accounts():
     try:
-        conn = sqlite3.connect(CONV_DB_PATH); cur = conn.cursor()
-        cur.execute("SELECT id,label,phone_number_id,is_default FROM accounts ORDER BY id")
-        rows = cur.fetchall(); conn.close()
-        return [ { 'id': r[0], 'label': r[1], 'phone_number_id': r[2], 'is_default': r[3] } for r in rows ]
+        rows = db_execute("SELECT id,label,phone_number_id,is_default FROM accounts ORDER BY id", (), fetch='all') or []
+        out = []
+        for r in rows:
+            if isinstance(r, dict):
+                out.append({ 'id': r['id'], 'label': r['label'], 'phone_number_id': r['phone_number_id'], 'is_default': r['is_default'] })
+            else:
+                out.append({ 'id': r[0], 'label': r[1], 'phone_number_id': r[2], 'is_default': r[3] })
+        return out
     except Exception:
         return []
 
 
 def upsert_account(label: str, phone_number_id: str, whatsapp_token: str, verify_token: str, is_default: bool=False, account_id: int=None):
     try:
-        conn = sqlite3.connect(CONV_DB_PATH); cur = conn.cursor()
         if is_default:
-            cur.execute("UPDATE accounts SET is_default=0")
+            db_execute("UPDATE accounts SET is_default=0")
         if account_id:
-            cur.execute("UPDATE accounts SET label=?, phone_number_id=?, whatsapp_token=?, verify_token=?, is_default=? WHERE id=?",
-                        (label, phone_number_id, whatsapp_token, verify_token, 1 if is_default else 0, account_id))
+            db_execute("UPDATE accounts SET label=?, phone_number_id=?, whatsapp_token=?, verify_token=?, is_default=? WHERE id=?",
+                       (label, phone_number_id, whatsapp_token, verify_token, 1 if is_default else 0, account_id))
         else:
-            cur.execute("INSERT INTO accounts(label, phone_number_id, whatsapp_token, verify_token, is_default) VALUES (?,?,?,?,?)",
-                        (label, phone_number_id, whatsapp_token, verify_token, 1 if is_default else 0))
-        conn.commit(); conn.close(); return True
+            db_execute("INSERT INTO accounts(label, phone_number_id, whatsapp_token, verify_token, is_default) VALUES (?,?,?,?,?)",
+                       (label, phone_number_id, whatsapp_token, verify_token, 1 if is_default else 0))
+        return True
     except Exception as e:
         print('⚠️ upsert_account error:', e); return False
 
 
 def delete_account(account_id: int):
     try:
-        conn = sqlite3.connect(CONV_DB_PATH); cur = conn.cursor()
-        cur.execute("DELETE FROM accounts WHERE id=?", (account_id,))
-        conn.commit(); conn.close(); return True
+        db_execute("DELETE FROM accounts WHERE id=?", (account_id,))
+        return True
     except Exception as e:
         print('⚠️ delete_account error:', e); return False
 
 
 def init_conversations_db():
     try:
-        conn = sqlite3.connect(CONV_DB_PATH)
-        cur = conn.cursor()
-        cur.execute(
-            """
-            CREATE TABLE IF NOT EXISTS users (
-                wa_id TEXT PRIMARY KEY,
-                name TEXT,
-                human_requested INTEGER DEFAULT 0,
-                last_message_at INTEGER DEFAULT 0,
-                last_in_at INTEGER DEFAULT 0,
-                human_timeout_min INTEGER DEFAULT 15,
-                human_expires_at INTEGER DEFAULT 0
+        if DB_IS_POSTGRES:
+            db_execute(
+                """
+                CREATE TABLE IF NOT EXISTS users (
+                    wa_id TEXT PRIMARY KEY,
+                    name TEXT,
+                    human_requested INTEGER DEFAULT 0,
+                    last_message_at INTEGER DEFAULT 0,
+                    last_in_at INTEGER DEFAULT 0,
+                    human_timeout_min INTEGER DEFAULT 15,
+                    human_expires_at INTEGER DEFAULT 0,
+                    account_id INTEGER
+                )
+                """
             )
-            """
-        )
-        cur.execute(
-            """
-            CREATE TABLE IF NOT EXISTS messages (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                wa_id TEXT,
-                direction TEXT, -- 'in' | 'out'
-                mtype TEXT,
-                body TEXT,
-                ts INTEGER
+            db_execute(
+                """
+                CREATE TABLE IF NOT EXISTS messages (
+                    id SERIAL PRIMARY KEY,
+                    wa_id TEXT,
+                    direction TEXT,
+                    mtype TEXT,
+                    body TEXT,
+                    ts INTEGER
+                )
+                """
             )
-            """
-        )
-        conn.commit()
-        # Asegurar columnas nuevas por si la tabla ya existía
-        try:
-            cur.execute("ALTER TABLE users ADD COLUMN last_in_at INTEGER DEFAULT 0")
-        except Exception:
-            pass
-        try:
-            cur.execute("ALTER TABLE users ADD COLUMN human_timeout_min INTEGER DEFAULT 15")
-        except Exception:
-            pass
-        try:
-            cur.execute("ALTER TABLE users ADD COLUMN human_expires_at INTEGER DEFAULT 0")
-        except Exception:
-            pass
-        conn.close()
+            # Asegurar columnas nuevas
+            try:
+                db_execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS last_in_at INTEGER DEFAULT 0")
+            except Exception:
+                pass
+            try:
+                db_execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS human_timeout_min INTEGER DEFAULT 15")
+            except Exception:
+                pass
+            try:
+                db_execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS human_expires_at INTEGER DEFAULT 0")
+            except Exception:
+                pass
+        else:
+            db_execute(
+                """
+                CREATE TABLE IF NOT EXISTS users (
+                    wa_id TEXT PRIMARY KEY,
+                    name TEXT,
+                    human_requested INTEGER DEFAULT 0,
+                    last_message_at INTEGER DEFAULT 0,
+                    last_in_at INTEGER DEFAULT 0,
+                    human_timeout_min INTEGER DEFAULT 15,
+                    human_expires_at INTEGER DEFAULT 0
+                )
+                """
+            )
+            db_execute(
+                """
+                CREATE TABLE IF NOT EXISTS messages (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    wa_id TEXT,
+                    direction TEXT, -- 'in' | 'out'
+                    mtype TEXT,
+                    body TEXT,
+                    ts INTEGER
+                )
+                """
+            )
+            # Asegurar columnas nuevas
+            try:
+                db_execute("ALTER TABLE users ADD COLUMN last_in_at INTEGER DEFAULT 0")
+            except Exception:
+                pass
+            try:
+                db_execute("ALTER TABLE users ADD COLUMN human_timeout_min INTEGER DEFAULT 15")
+            except Exception:
+                pass
+            try:
+                db_execute("ALTER TABLE users ADD COLUMN human_expires_at INTEGER DEFAULT 0")
+            except Exception:
+                pass
     except Exception as e:
         print('⚠️ No se pudo inicializar conversations.db:', e)
 
 
 def _db_execute(query: str, params: tuple = ()):  # simple helper
-    conn = sqlite3.connect(CONV_DB_PATH)
-    cur = conn.cursor()
-    cur.execute(query, params)
-    conn.commit()
-    conn.close()
+    db_execute(query, params)
 
 
 def save_incoming_message(wa_id: str, body: str, mtype: str = 'text', name: str | None = None, ts: int | None = None):
     try:
         ts = ts or int(time.time())
-        # upsert user
-        conn = sqlite3.connect(CONV_DB_PATH)
-        cur = conn.cursor()
-        cur.execute("SELECT wa_id FROM users WHERE wa_id=?", (wa_id,))
-        exists = cur.fetchone()
+        exists = db_execute("SELECT wa_id FROM users WHERE wa_id=?", (wa_id,), fetch='one')
         if exists:
             if name:
-                cur.execute("UPDATE users SET name=?, last_message_at=?, last_in_at=? WHERE wa_id=?", (name, ts, ts, wa_id))
+                db_execute("UPDATE users SET name=?, last_message_at=?, last_in_at=? WHERE wa_id=?", (name, ts, ts, wa_id))
             else:
-                cur.execute("UPDATE users SET last_message_at=?, last_in_at=? WHERE wa_id=?", (ts, ts, wa_id))
+                db_execute("UPDATE users SET last_message_at=?, last_in_at=? WHERE wa_id=?", (ts, ts, wa_id))
         else:
-            cur.execute("INSERT INTO users (wa_id, name, last_message_at, last_in_at) VALUES (?,?,?,?)", (wa_id, name or '', ts, ts))
-        cur.execute("INSERT INTO messages (wa_id, direction, mtype, body, ts) VALUES (?,?,?,?,?)", (wa_id, 'in', mtype, body or '', ts))
-        conn.commit()
-        conn.close()
+            db_execute("INSERT INTO users (wa_id, name, last_message_at, last_in_at) VALUES (?,?,?,?)", (wa_id, name or '', ts, ts))
+        db_execute("INSERT INTO messages (wa_id, direction, mtype, body, ts) VALUES (?,?,?,?,?)", (wa_id, 'in', mtype, body or '', ts))
     except Exception as e:
         print('⚠️ No se pudo guardar mensaje entrante:', e)
 
@@ -257,12 +337,10 @@ def set_human_on(wa_id: str, timeout_min: int):
     try:
         now = int(time.time())
         expires = now + max(1, int(timeout_min or 15)) * 60
-        conn = sqlite3.connect(CONV_DB_PATH)
-        cur = conn.cursor()
-        cur.execute("UPDATE users SET human_requested=1, human_timeout_min=?, human_expires_at=? WHERE wa_id=?", (int(timeout_min or 15), expires, wa_id))
-        if cur.rowcount == 0:
-            cur.execute("INSERT INTO users (wa_id, human_requested, human_timeout_min, human_expires_at, last_message_at) VALUES (?,?,?,?,?)", (wa_id, 1, int(timeout_min or 15), expires, now))
-        conn.commit(); conn.close()
+        db_execute("UPDATE users SET human_requested=1, human_timeout_min=?, human_expires_at=? WHERE wa_id=?", (int(timeout_min or 15), expires, wa_id))
+        exists = db_execute("SELECT wa_id FROM users WHERE wa_id=?", (wa_id,), fetch='one')
+        if not exists:
+            db_execute("INSERT INTO users (wa_id, human_requested, human_timeout_min, human_expires_at, last_message_at) VALUES (?,?,?,?,?)", (wa_id, 1, int(timeout_min or 15), expires, now))
     except Exception as e:
         print('⚠️ No se pudo activar chat humano:', e)
 
@@ -276,23 +354,17 @@ def set_human_off(wa_id: str):
 
 def list_conversations(limit: int = 100, human_only: bool = False):
     try:
-        conn = sqlite3.connect(CONV_DB_PATH)
-        cur = conn.cursor()
         if human_only:
-            cur.execute("SELECT wa_id, name, human_requested, last_message_at FROM users WHERE human_requested=1 ORDER BY last_message_at DESC LIMIT ?", (limit,))
+            rows = db_execute("SELECT wa_id, name, human_requested, last_message_at FROM users WHERE human_requested=1 ORDER BY last_message_at DESC LIMIT ?", (limit,), fetch='all') or []
         else:
-            cur.execute("SELECT wa_id, name, human_requested, last_message_at FROM users ORDER BY last_message_at DESC LIMIT ?", (limit,))
-        rows = cur.fetchall()
-        conn.close()
-        return [
-            {
-                'wa_id': r[0],
-                'name': r[1] or '',
-                'human_requested': bool(r[2] or 0),
-                'last_message_at': r[3] or 0,
-            }
-            for r in rows
-        ]
+            rows = db_execute("SELECT wa_id, name, human_requested, last_message_at FROM users ORDER BY last_message_at DESC LIMIT ?", (limit,), fetch='all') or []
+        out = []
+        for r in rows:
+            if isinstance(r, dict):
+                out.append({'wa_id': r.get('wa_id'), 'name': r.get('name') or '', 'human_requested': bool(r.get('human_requested') or 0), 'last_message_at': r.get('last_message_at') or 0})
+            else:
+                out.append({'wa_id': r[0], 'name': r[1] or '', 'human_requested': bool(r[2] or 0), 'last_message_at': r[3] or 0})
+        return out
     except Exception as e:
         print('⚠️ No se pudo listar conversaciones:', e)
         return []
@@ -300,21 +372,22 @@ def list_conversations(limit: int = 100, human_only: bool = False):
 
 def get_conversation(wa_id: str, limit: int = 200):
     try:
-        conn = sqlite3.connect(CONV_DB_PATH)
-        cur = conn.cursor()
-        cur.execute("SELECT human_requested, name FROM users WHERE wa_id=?", (wa_id,))
-        row_user = cur.fetchone() or (0, '')
-        cur.execute("SELECT direction, mtype, body, ts FROM messages WHERE wa_id=? ORDER BY ts ASC, id ASC LIMIT ?", (wa_id, limit))
-        rows = cur.fetchall()
-        conn.close()
-        return {
-            'wa_id': wa_id,
-            'name': (row_user[1] or ''),
-            'human_requested': bool(row_user[0] or 0),
-            'messages': [
-                { 'direction': r[0], 'mtype': r[1], 'body': r[2], 'ts': r[3] } for r in rows
-            ]
-        }
+        row_user = db_execute("SELECT human_requested, name FROM users WHERE wa_id=?", (wa_id,), fetch='one')
+        if isinstance(row_user, dict):
+            human_requested = bool(row_user.get('human_requested') or 0)
+            name = row_user.get('name') or ''
+        else:
+            row_user = row_user or (0, '')
+            human_requested = bool(row_user[0] or 0)
+            name = row_user[1] or ''
+        rows = db_execute("SELECT direction, mtype, body, ts FROM messages WHERE wa_id=? ORDER BY ts ASC, id ASC LIMIT ?", (wa_id, limit), fetch='all') or []
+        messages = []
+        for r in rows:
+            if isinstance(r, dict):
+                messages.append({'direction': r.get('direction'), 'mtype': r.get('mtype'), 'body': r.get('body'), 'ts': r.get('ts')})
+            else:
+                messages.append({'direction': r[0], 'mtype': r[1], 'body': r[2], 'ts': r[3]})
+        return {'wa_id': wa_id, 'name': name, 'human_requested': human_requested, 'messages': messages}
     except Exception as e:
         print('⚠️ No se pudo obtener conversación:', e)
         return {'wa_id': wa_id, 'name': '', 'human_requested': False, 'messages': []}
@@ -509,12 +582,8 @@ def api_send_message():
         return jsonify({'error': 'faltan campos'}), 400
     # Verificar permiso de chat humano
     try:
-        conn = sqlite3.connect(CONV_DB_PATH)
-        cur = conn.cursor()
-        cur.execute("SELECT human_requested FROM users WHERE wa_id=?", (wa_id,))
-        row = cur.fetchone()
-        conn.close()
-        allowed = bool(row and row[0])
+        row = db_execute("SELECT human_requested FROM users WHERE wa_id=?", (wa_id,), fetch='one')
+        allowed = bool((row.get('human_requested') if isinstance(row, dict) else (row[0] if row else 0)) or 0)
     except Exception:
         allowed = False
     if not allowed:
@@ -601,19 +670,23 @@ def webhook():
                                     # Asociar usuario a la cuenta de este webhook
                                     try:
                                         if getattr(g, 'account', None):
-                                            conn2 = sqlite3.connect(CONV_DB_PATH); cur2 = conn2.cursor()
-                                            cur2.execute("UPDATE users SET account_id=? WHERE wa_id=?", (g.account.get('id'), from_wa))
-                                            conn2.commit(); conn2.close()
+                                            db_execute("UPDATE users SET account_id=? WHERE wa_id=?", (g.account.get('id'), from_wa))
                                     except Exception:
                                         pass
                                 except Exception:
                                     pass
                                 # Control de chat humano (pausar flujo)
                                 try:
-                                    conn = sqlite3.connect(CONV_DB_PATH); cur = conn.cursor()
-                                    cur.execute("SELECT human_requested, human_timeout_min, human_expires_at FROM users WHERE wa_id=?", (from_wa,))
-                                    row = cur.fetchone(); conn.close()
-                                    if row and (row[0] or 0) == 1:
+                                    row = db_execute("SELECT human_requested, human_timeout_min, human_expires_at FROM users WHERE wa_id=?", (from_wa,), fetch='one')
+                                    if isinstance(row, dict):
+                                        human_requested = int(row.get('human_requested') or 0)
+                                        timeout_min = int(row.get('human_timeout_min') or 15)
+                                        expires = int(row.get('human_expires_at') or 0)
+                                    else:
+                                        human_requested = int(((row[0] if row else 0) or 0))
+                                        timeout_min = int(((row[1] if row else 15) or 15))
+                                        expires = int(((row[2] if row else 0) or 0))
+                                    if human_requested == 1:
                                         now = int(time.time())
                                         # Frase para cerrar manualmente desde el cliente
                                         close_phrase = 'cerrar chat en vivo'
@@ -622,8 +695,6 @@ def webhook():
                                             send_whatsapp_text(from_wa, '✅ Chat en vivo cerrado. El asistente continuará atendiéndote.')
                                         else:
                                             # Si venció, desactivar para permitir flujo; si no, extender ventana y no responder
-                                            timeout_min = int(row[1] or 15)
-                                            expires = int(row[2] or 0)
                                             if expires and now > expires:
                                                 set_human_off(from_wa)
                                             else:
@@ -681,10 +752,9 @@ def webhook():
                                 print("🔘 INTERACTIVE ID:", reply_id)
                                 # Si hay chat humano activo, ignorar flujo para interactivos también
                                 try:
-                                    conn = sqlite3.connect(CONV_DB_PATH); cur = conn.cursor()
-                                    cur.execute("SELECT human_requested FROM users WHERE wa_id=?", (from_wa,))
-                                    row = cur.fetchone(); conn.close()
-                                    if row and (row[0] or 0) == 1:
+                                    row = db_execute("SELECT human_requested FROM users WHERE wa_id=?", (from_wa,), fetch='one')
+                                    val = (row.get('human_requested') if isinstance(row, dict) else (row[0] if row else 0)) or 0
+                                    if int(val) == 1:
                                         return 'ok', 200
                                 except Exception:
                                     pass
@@ -759,11 +829,15 @@ def _post_wa(payload: dict):
         try:
             to = payload.get('to')
             if to:
-                conn = sqlite3.connect(CONV_DB_PATH); cur = conn.cursor()
-                cur.execute("SELECT a.id,a.label,a.phone_number_id,a.whatsapp_token,a.verify_token,a.is_default FROM users u JOIN accounts a ON a.id=u.account_id WHERE u.wa_id=?", (to,))
-                row = cur.fetchone(); conn.close()
+                row = db_execute(
+                    "SELECT a.id,a.label,a.phone_number_id,a.whatsapp_token,a.verify_token,a.is_default FROM users u JOIN accounts a ON a.id=u.account_id WHERE u.wa_id=?",
+                    (to,), fetch='one'
+                )
                 if row:
-                    acc = { 'id': row[0], 'label': row[1], 'phone_number_id': row[2], 'whatsapp_token': row[3], 'verify_token': row[4], 'is_default': row[5] }
+                    if isinstance(row, dict):
+                        acc = row
+                    else:
+                        acc = { 'id': row[0], 'label': row[1], 'phone_number_id': row[2], 'whatsapp_token': row[3], 'verify_token': row[4], 'is_default': row[5] }
         except Exception:
             acc = None
     if not acc:
@@ -1620,11 +1694,12 @@ def internal_send_test():
     # Si se indica account_id, establecerla en g.account temporalmente
     if account_id:
         try:
-            conn = sqlite3.connect(CONV_DB_PATH); cur = conn.cursor()
-            cur.execute("SELECT id,label,phone_number_id,whatsapp_token,verify_token,is_default FROM accounts WHERE id=?", (account_id,))
-            row = cur.fetchone(); conn.close()
+            row = db_execute("SELECT id,label,phone_number_id,whatsapp_token,verify_token,is_default FROM accounts WHERE id=?", (account_id,), fetch='one')
             if row:
-                g.account = { 'id': row[0], 'label': row[1], 'phone_number_id': row[2], 'whatsapp_token': row[3], 'verify_token': row[4], 'is_default': row[5] }
+                if isinstance(row, dict):
+                    g.account = row
+                else:
+                    g.account = { 'id': row[0], 'label': row[1], 'phone_number_id': row[2], 'whatsapp_token': row[3], 'verify_token': row[4], 'is_default': row[5] }
         except Exception:
             pass
     result = send_whatsapp_text(norm_to, text)
@@ -1648,11 +1723,12 @@ def internal_phone_info():
     acc = None
     if account_id:
         try:
-            conn = sqlite3.connect(CONV_DB_PATH); cur = conn.cursor()
-            cur.execute("SELECT id,label,phone_number_id,whatsapp_token,verify_token,is_default FROM accounts WHERE id=?", (account_id,))
-            row = cur.fetchone(); conn.close()
+            row = db_execute("SELECT id,label,phone_number_id,whatsapp_token,verify_token,is_default FROM accounts WHERE id=?", (account_id,), fetch='one')
             if row:
-                acc = { 'id': row[0], 'label': row[1], 'phone_number_id': row[2], 'whatsapp_token': row[3], 'verify_token': row[4], 'is_default': row[5] }
+                if isinstance(row, dict):
+                    acc = row
+                else:
+                    acc = { 'id': row[0], 'label': row[1], 'phone_number_id': row[2], 'whatsapp_token': row[3], 'verify_token': row[4], 'is_default': row[5] }
         except Exception:
             pass
     if not acc:

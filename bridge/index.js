@@ -1,4 +1,4 @@
-const { Client, LocalAuth } = require('whatsapp-web.js');
+const { Client, LocalAuth, Buttons, List } = require('whatsapp-web.js');
 const qrcode = require('qrcode-terminal');
 const axios = require('axios');
 require('dotenv').config();
@@ -62,6 +62,22 @@ function pickOptionByUserReply(options, userText) {
   return found || null;
 }
 
+function buildInteractiveMessage(options, promptText) {
+  if (!Array.isArray(options) || options.length === 0) return null;
+  const text = (promptText && promptText.trim()) ? promptText.trim() : 'Elige una opción:';
+
+  // Hasta 3: usar Buttons (botones rápidos)
+  if (options.length <= 3) {
+    const btns = options.map(o => ({ id: o.payload || o.title, body: o.title?.slice(0, 20) || 'Opción' }));
+    return new Buttons(htmlToText(text), btns, undefined, 'Selecciona una opción');
+  }
+
+  // 4 o más: usar List
+  const rows = options.map(o => ({ title: o.title || 'Opción', rowId: o.payload || o.title }));
+  const sections = [{ title: 'Opciones', rows }];
+  return new List(htmlToText(text), 'Abrir menú', sections, 'Menú', '');
+}
+
 client.on('message', async (msg) => {
   try {
     if (msg.fromMe) return; // evita eco si tú mismo escribes
@@ -71,11 +87,19 @@ client.on('message', async (msg) => {
     const prev = lastOptionsByChat.get(chatId) || [];
     let data;
 
-    const chosen = pickOptionByUserReply(prev, body);
-    if (chosen && chosen.payload) {
-      data = await askFlowWithPayload(chosen.payload);
+    // Respuestas interactivas nativas
+    if (msg.type === 'buttons_response' && msg.selectedButtonId) {
+      data = await askFlowWithPayload(msg.selectedButtonId);
+    } else if (msg.type === 'list_response' && msg.selectedRowId) {
+      data = await askFlowWithPayload(msg.selectedRowId);
     } else {
-      data = await askFlowWithMessage(body);
+      // Fallback: texto libre o elegir por número/título
+      const chosen = pickOptionByUserReply(prev, body);
+      if (chosen && chosen.payload) {
+        data = await askFlowWithPayload(chosen.payload);
+      } else {
+        data = await askFlowWithMessage(body);
+      }
     }
 
     // Construir respuesta
@@ -84,20 +108,32 @@ client.on('message', async (msg) => {
     else if (data.response) replyText = data.response;
     else replyText = '🤖 (Sin contenido)';
 
-    // Opciones
+    // Opciones: intentar enviar como botones/lista nativos
     if (Array.isArray(data.options) && data.options.length > 0) {
-      const lines = ['','Elige una opción respondiendo con el número o el texto exacto:'];
-      data.options.forEach((o, i) => lines.push(`${i + 1}) ${o.title}`));
-      replyText += '\n' + lines.join('\n');
+      const interactive = buildInteractiveMessage(data.options, replyText);
+      if (interactive) {
+        try {
+          await client.sendMessage(chatId, interactive);
+        } catch (e) {
+          // Fallback a enumeración si no soporta
+          const lines = ['','Elige una opción respondiendo con el número o el texto exacto:'];
+          data.options.forEach((o, i) => lines.push(`${i + 1}) ${o.title}`));
+          await client.sendMessage(chatId, replyText + '\n' + lines.join('\n'));
+        }
+      } else {
+        // Fallback: enumeración
+        const lines = ['','Elige una opción respondiendo con el número o el texto exacto:'];
+        data.options.forEach((o, i) => lines.push(`${i + 1}) ${o.title}`));
+        await client.sendMessage(chatId, replyText + '\n' + lines.join('\n'));
+      }
       lastOptionsByChat.set(chatId, data.options);
     } else {
       lastOptionsByChat.delete(chatId);
+      await client.sendMessage(chatId, replyText);
     }
-
-    await msg.reply(replyText);
   } catch (err) {
     console.error('Error procesando mensaje:', err?.response?.data || err.message);
-    try { await msg.reply('⚠️ Error temporal procesando tu mensaje.'); } catch(_) {}
+    try { await client.sendMessage(msg.from, '⚠️ Error temporal procesando tu mensaje.'); } catch(_) {}
   }
 });
 

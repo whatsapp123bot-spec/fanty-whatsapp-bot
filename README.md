@@ -84,10 +84,17 @@ Variables útiles:
 
 En Render, agrega estas variables en el panel de Environment.
 
-## Base de datos (nota)
+## Base de datos
 
-Por defecto se usa SQLite (`conversations.db`). Si quieres usar SQL gestionado (PostgreSQL en Render),
-avísame y migro el acceso a una capa compatible con `DATABASE_URL` (psycopg2/SQLAlchemy) para persistencia en la nube.
+- Local: usa SQLite (`conversations.db`). No requiere configuración.
+- Producción (Render): si defines `DATABASE_URL` apuntando a PostgreSQL, la app lo detecta automáticamente y usa psycopg2.
+   - Las tablas necesarias (`users`, `messages`, `accounts`) se crean al iniciar si no existen.
+   - Ventajas: persistencia estable (Render reinicia el contenedor), consultas multi-cuenta y chat en vivo duradero.
+
+Variables:
+- `DATABASE_URL`: p.ej. `postgres://user:pass@host:5432/dbname`
+
+En `render.yaml` ya está declarado `DATABASE_URL` como variable. Cópiala desde tu instancia de Render PostgreSQL (External Database > External Connection) y pégala en el servicio web.
 
 ## Exponer a Internet (opcional)
 
@@ -146,3 +153,5 @@ git push -u origin main
 Notas:
 - En local usa `python app.py`. En Render, Gunicorn sirve la app con `app:app`.
 - La gestión de assets se realiza desde el editor visual y la API `/internal/upload`; ya no existe `/admin` ni `static/catalogos/`.
+- Si configuras `CLOUDINARY_URL`, el builder sube a Cloudinary y elimina al borrar/replace mediante `/internal/delete_asset`.
+- Con `DATABASE_URL`, los chats y cuentas persisten en Postgres (recomendado para Render). En local, SQLite sigue funcionando.
