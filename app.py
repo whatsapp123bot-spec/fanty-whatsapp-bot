@@ -158,7 +158,10 @@ def get_default_account():
 
 def get_account_by_phone_number_id(pnid: str):
     try:
-        row = db_execute("SELECT id,label,phone_number_id,whatsapp_token,verify_token,is_default FROM accounts WHERE phone_number_id=?", (pnid,), fetch='one')
+        # Prioriza la cuenta por defecto y la más reciente si hay duplicados
+        row = db_execute(
+            "SELECT id,label,phone_number_id,whatsapp_token,verify_token,is_default FROM accounts WHERE phone_number_id=? ORDER BY is_default DESC, id DESC LIMIT 1",
+            (pnid,), fetch='one')
         if not row:
             return None
         if isinstance(row, dict):
@@ -201,8 +204,15 @@ def upsert_account(label: str, phone_number_id: str, whatsapp_token: str, verify
             db_execute("UPDATE accounts SET label=?, phone_number_id=?, whatsapp_token=?, verify_token=?, is_default=? WHERE id=?",
                        (label, phone_number_id, whatsapp_token, verify_token, 1 if is_default else 0, account_id))
         else:
-            db_execute("INSERT INTO accounts(label, phone_number_id, whatsapp_token, verify_token, is_default) VALUES (?,?,?,?,?)",
-                       (label, phone_number_id, whatsapp_token, verify_token, 1 if is_default else 0))
+            # Si ya existe una cuenta con el mismo phone_number_id, actualizarla en vez de crear duplicado
+            existing = db_execute("SELECT id FROM accounts WHERE phone_number_id=? ORDER BY id DESC LIMIT 1", (phone_number_id,), fetch='one')
+            if existing:
+                ex_id = existing['id'] if isinstance(existing, dict) else existing[0]
+                db_execute("UPDATE accounts SET label=?, whatsapp_token=?, verify_token=?, is_default=? WHERE id=?",
+                           (label, whatsapp_token, verify_token, 1 if is_default else 0, ex_id))
+            else:
+                db_execute("INSERT INTO accounts(label, phone_number_id, whatsapp_token, verify_token, is_default) VALUES (?,?,?,?,?)",
+                           (label, phone_number_id, whatsapp_token, verify_token, 1 if is_default else 0))
         return True
     except Exception as e:
         print('⚠️ upsert_account error:', e); return False
