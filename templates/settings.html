@@ -79,7 +79,7 @@
               {% else %}
                 <button class="btn btn-secondary validate-btn" type="button" data-id="{{ a.id }}">Validar</button>
               {% endif %}
-              <a class="btn btn-danger" href="/settings?action=delete&id={{ a.id }}&key={{ key }}" onclick="return confirm('¿Eliminar esta cuenta?');">Eliminar</a>
+              <button class="btn btn-danger delete-btn" type="button" data-id="{{ a.id }}">Eliminar</button>
             </td>
           </tr>
         {% endfor %}
@@ -144,6 +144,27 @@
         btn.addEventListener('click', (ev) => {
           const id = ev.currentTarget.getAttribute('data-id');
           validateAccount(id);
+        });
+      });
+      document.querySelectorAll('.delete-btn').forEach(btn => {
+        btn.addEventListener('click', async (ev) => {
+          if(!confirm('¿Eliminar esta cuenta?')) return;
+          const id = ev.currentTarget.getAttribute('data-id');
+          try{
+            const res = await fetch(`/internal/accounts/${id}?key={{ key }}`, { method: 'DELETE' });
+            const json = await res.json();
+            if(json.ok){
+              // quitar fila de la tabla
+              const tr = ev.currentTarget.closest('tr');
+              if(tr) tr.remove();
+              const msg = document.getElementById('validate-msg');
+              msg.textContent = '🗑️ Cuenta eliminada.';
+            }else{
+              alert('No se pudo eliminar (verifica que no exista protección del servidor).');
+            }
+          }catch(e){
+            alert('Error eliminando: '+e);
+          }
         });
       });
     </script>

@@ -2097,6 +2097,27 @@ def internal_validate_account():
     return jsonify({ 'ok': res['ok'], 'status': res['status'], 'body': res['body'], 'account': { 'id': acc.get('id'), 'label': acc.get('label'), 'phone_number_id': acc.get('phone_number_id'), 'is_default': acc.get('is_default') } })
 
 
+@app.get('/internal/accounts')
+def internal_list_accounts():
+    """Lista cuentas en JSON. Protegido con ?key=VERIFY_TOKEN."""
+    key = request.args.get('key')
+    if key != VERIFY_TOKEN:
+        return jsonify({'error': 'forbidden'}), 403
+    return jsonify({'items': list_accounts()})
+
+
+@app.delete('/internal/accounts/<int:acc_id>')
+def internal_delete_account(acc_id: int):
+    """Elimina una cuenta por id. Protegido con ?key=VERIFY_TOKEN."""
+    key = request.args.get('key')
+    if key != VERIFY_TOKEN:
+        return jsonify({'error': 'forbidden'}), 403
+    ok = delete_account(acc_id)
+    # Verificación de eliminación efectiva
+    still = db_execute("SELECT id FROM accounts WHERE id=?", (acc_id,), fetch='one')
+    return jsonify({'ok': ok and not bool(still)})
+
+
 @app.route('/settings', methods=['GET', 'POST'])
 def settings_page():
     """Panel para gestionar múltiples cuentas de WhatsApp. Protegido con ?key=VERIFY_TOKEN."""
