@@ -2,19 +2,51 @@
   "start_node": "welcome",
   "nodes": {
     "welcome": {
+      "type": "action",
       "text": "👋 Hola, soy Fanty, tu asistente. ¿Qué deseas hacer hoy?",
       "buttons": [
         { "title": "📦 Ver catálogo", "next": "categorias" },
-        { "title": "ℹ️ Hablar con asesor", "id": "HABLAR_ASESOR" },
+        { "title": "ℹ️ Hablar con asesor", "next": "advisor" },
         { "title": "💬 Más opciones", "id": "MAS_OPCIONES" }
       ]
     },
+    "advisor": {
+      "type": "advisor",
+      "text": "Perfecto 💌 Te conectaré con una asesora para ayudarte directamente.",
+      "phone": "",
+      "timeout_min": 15
+    },
     "categorias": {
+      "type": "action",
       "text": "Tenemos estas categorías disponibles. Elige una:",
       "buttons": [
-        { "title": "🔥 Disfraz Sexy", "id": "CATALOGO_DISFRAZ" },
-        { "title": "👙 Lencería", "id": "CATALOGO_LENCERIA" },
-        { "title": "🧦 Mallas", "id": "CATALOGO_MALLAS" }
+        { "title": "🔥 Disfraz Sexy", "next": "cat_disfraz" },
+        { "title": "👙 Lencería", "next": "cat_lenceria" },
+        { "title": "🧦 Mallas", "next": "cat_mallas" }
+      ]
+    },
+    "cat_disfraz": {
+      "type": "action",
+      "text": "Aquí tienes el catálogo de Disfraz Sexy. ¿Quieres volver al listado o hablar con una asesora?",
+      "buttons": [
+        { "title": "🔙 Volver a categorías", "next": "categorias" },
+        { "title": "ℹ️ Hablar con asesor", "next": "advisor" }
+      ]
+    },
+    "cat_lenceria": {
+      "type": "action",
+      "text": "Aquí tienes el catálogo de Lencería. ¿Quieres volver al listado o hablar con una asesora?",
+      "buttons": [
+        { "title": "🔙 Volver a categorías", "next": "categorias" },
+        { "title": "ℹ️ Hablar con asesor", "next": "advisor" }
+      ]
+    },
+    "cat_mallas": {
+      "type": "action",
+      "text": "Aquí tienes el catálogo de Mallas. ¿Quieres volver al listado o hablar con una asesora?",
+      "buttons": [
+        { "title": "🔙 Volver a categorías", "next": "categorias" },
+        { "title": "ℹ️ Hablar con asesor", "next": "advisor" }
       ]
     }
   }
