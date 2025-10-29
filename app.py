@@ -760,9 +760,8 @@ def webhook():
                                     if matched_node:
                                         send_flow_node(from_wa, matched_node)
                                         responded = True
-                                    elif FLOW_CONFIG.get('start_node'):
-                                        # Fallback: si hay start_node definido, envíalo ante cualquier texto
-                                        # para asegurar una primera respuesta incluso sin saludo/keywords.
+                                    elif (FLOW_CONFIG.get('start_node') and any(g in low for g in greetings)):
+                                        # Solo mostrar el inicio del flujo ante saludos comunes
                                         send_flow_node(from_wa, FLOW_CONFIG.get('start_node'))
                                         responded = True
                                     # Si no hay start_node, no respondemos (flujo gestionado por panel)
