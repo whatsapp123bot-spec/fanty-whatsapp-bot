@@ -2108,6 +2108,9 @@ def settings_page():
         label = (request.form.get('label') or '').strip()
         pnid = (request.form.get('phone_number_id') or '').strip()
         wtok = (request.form.get('whatsapp_token') or '').strip()
+        # Saneamiento del token: quitar comillas, espacios y saltos de línea accidentales
+        if wtok:
+            wtok = wtok.replace('\r', '').replace('\n', '').strip().strip('"').strip("'")
         vtok = (request.form.get('verify_token') or '').strip()
         is_def = request.form.get('is_default') == '1'
         if label and pnid and wtok:

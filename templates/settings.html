@@ -37,7 +37,8 @@
       <span class="help">Administra múltiples cuentas de WhatsApp Cloud API o conéctate por WhatsApp Web escaneando el QR.</span>
     </div>
 
-    <h2 style="margin-top:0">Cuentas registradas</h2>
+  <h2 style="margin-top:0">Cuentas registradas</h2>
+  <div id="validate-msg" class="help" style="margin:6px 0 10px 0;"></div>
     <table>
       <thead>
         <tr>
@@ -65,6 +66,7 @@
               {% if not a.is_default %}
                 <a class="btn btn-success" href="/settings?action=make_default&id={{ a.id }}&key={{ key }}">Hacer por defecto</a>
               {% endif %}
+              <button class="btn btn-secondary validate-btn" type="button" data-id="{{ a.id }}">Validar</button>
               <a class="btn btn-danger" href="/settings?action=delete&id={{ a.id }}&key={{ key }}" onclick="return confirm('¿Eliminar esta cuenta?');">Eliminar</a>
             </td>
           </tr>
@@ -104,6 +106,29 @@
     </form>
 
     <p class="help">Nota: La vista previa y el webhook utilizarán la cuenta por defecto si no hay otra asociada al número del usuario.</p>
+    <script>
+      async function validateAccount(id){
+        const msg = document.getElementById('validate-msg');
+        msg.textContent = 'Validando credenciales...';
+        try{
+          const res = await fetch(`/internal/validate_account?key={{ key }}&id=${id}`);
+          const json = await res.json();
+          if(json.ok){
+            msg.textContent = `✅ OK (status ${json.status}). PNID: ${json.account?.phone_number_id}`;
+          }else{
+            msg.textContent = `❌ Error (status ${json.status}): ${json.body}`;
+          }
+        }catch(e){
+          msg.textContent = '❌ Error de red: '+e;
+        }
+      }
+      document.querySelectorAll('.validate-btn').forEach(btn => {
+        btn.addEventListener('click', (ev) => {
+          const id = ev.currentTarget.getAttribute('data-id');
+          validateAccount(id);
+        });
+      });
+    </script>
   </main>
 </body>
 </html>
