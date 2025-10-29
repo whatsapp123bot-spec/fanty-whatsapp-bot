@@ -354,8 +354,6 @@
         ta.placeholder = 'Texto del mensaje'; ta.addEventListener('input', () => { flow.nodes[id].text = ta.value; });
         el.appendChild(ta);
       }
-
-  }
       if ((node.type||'action') === 'trigger') {
         const sc2 = document.createElement('span'); sc2.className='start-connector'; sc2.title='Arrastra para conectar este trigger con otro nodo';
         sc2.dataset.startConnector = id;
