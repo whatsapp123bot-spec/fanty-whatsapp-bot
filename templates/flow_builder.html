@@ -726,7 +726,7 @@
     }
 
     // Upload helpers
-    async function handleUpload(nodeId, accept, kind){
+  async function handleUpload(nodeId, accept, kind){
       try {
         const input = document.createElement('input'); input.type='file'; input.accept = accept;
         const picked = await new Promise((resolve) => { input.onchange = () => resolve(input.files && input.files[0]); input.click(); });
@@ -736,14 +736,32 @@
         if (!res.ok) { alert('Error al subir archivo'); return; }
         const data = await res.json();
         if (!flow.nodes[nodeId].assets) flow.nodes[nodeId].assets = [];
-        flow.nodes[nodeId].assets.push({ type: kind, url: data.url, name: data.name || picked.name });
+        const asset = { type: kind, url: data.url, name: data.name || picked.name };
+        if (data.provider) asset.provider = data.provider;
+        if (data.public_id) asset.public_id = data.public_id;
+        if (data.resource_type) asset.resource_type = data.resource_type;
+        flow.nodes[nodeId].assets.push(asset);
         refresh();
       } catch (err) {
         console.error(err); alert('No se pudo subir el archivo.');
       }
     }
-    function removeAsset(nodeId, idx){
-      const arr = flow.nodes[nodeId].assets||[]; arr.splice(idx,1); refresh();
+    async function removeAsset(nodeId, idx){
+      const arr = flow.nodes[nodeId].assets||[];
+      const asset = arr[idx];
+      // Intentar borrar del backend si es Cloudinary o local file
+      try {
+        if (asset && (asset.provider === 'cloudinary' || asset.provider === 'local' || asset.url)){
+          const fd = new FormData();
+          fd.append('provider', asset.provider || 'local');
+          if (asset.public_id) fd.append('public_id', asset.public_id);
+          if (asset.resource_type) fd.append('resource_type', asset.resource_type);
+          if (asset.url) fd.append('url', asset.url);
+          if (asset.name) fd.append('name', asset.name);
+          await fetch('/internal/delete_asset?key={{ key }}', { method: 'POST', body: fd });
+        }
+      } catch (e) { console.warn('No se pudo eliminar remoto:', e); }
+      arr.splice(idx,1); refresh();
     }
 
     // Zoom helpers

@@ -1383,8 +1383,16 @@ def internal_upload():
                 folder=os.getenv('CLOUDINARY_FOLDER', 'fanty/uploads')
             )
             url = up.get('secure_url') or up.get('url')
-            name = up.get('public_id').split('/')[-1] if up.get('public_id') else secure_filename(f.filename)
-            return jsonify({"url": url, "name": name, "ext": ext.lower()}), 200
+            public_id = up.get('public_id')
+            name = public_id.split('/')[-1] if public_id else secure_filename(f.filename)
+            return jsonify({
+                "url": url,
+                "name": name,
+                "ext": ext.lower(),
+                "provider": "cloudinary",
+                "public_id": public_id,
+                "resource_type": resource_type
+            }), 200
 
         # Fallback: guardar local en static/uploads
         base = secure_filename(os.path.basename(f.filename)) or 'file'
@@ -1400,9 +1408,90 @@ def internal_upload():
         base = request.url_root.rstrip('/')
         rel = url_for('static', filename=f'uploads/{name}')
         url = base + rel
-        return jsonify({"url": url, "name": name, "ext": ext.lower()}), 200
+        return jsonify({
+            "url": url,
+            "name": name,
+            "ext": ext.lower(),
+            "provider": "local"
+        }), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+def _extract_cloudinary_public_id_from_url(url: str) -> tuple[str|None, str|None]:
+    """Devuelve (public_id, resource_type) a partir de una URL de Cloudinary si es posible."""
+    try:
+        # Ej: https://res.cloudinary.com/<cloud>/<type>/upload/v1729/fanty/uploads/name.ext
+        # type puede ser image, raw, video
+        from urllib.parse import urlparse
+        p = urlparse(url)
+        parts = [s for s in p.path.split('/') if s]
+        # parts: [<cloud_name?>, <resource_type>, 'upload', 'vXXXX', 'folder', 'name.ext'] o similar
+        if 'upload' in parts:
+            idx = parts.index('upload')
+            if idx >= 1 and idx+1 < len(parts):
+                resource_type = parts[idx-1]  # image|raw|video
+                tail = parts[idx+1:]
+                # omitir prefijo de versión si comienza con vNNN
+                if tail and tail[0].startswith('v') and tail[0][1:].isdigit():
+                    tail = tail[1:]
+                if tail:
+                    filename = tail[-1]
+                    noext = os.path.splitext(filename)[0]
+                    # public_id = (folder/...)/noext
+                    public_id = '/'.join(tail[:-1] + [noext]) if len(tail) > 1 else noext
+                    return public_id, resource_type
+        return None, None
+    except Exception:
+        return None, None
+
+
+@app.post('/internal/delete_asset')
+def internal_delete_asset():
+    """Elimina un asset remoto (Cloudinary) o local (static/uploads). Protegido con ?key=VERIFY_TOKEN o form key.
+    Acepta JSON o form con campos:
+      - provider: 'cloudinary' | 'local'
+      - public_id (opcional para cloudinary)
+      - url (opcional, se usará para derivar public_id o nombre local)
+      - resource_type: 'image' | 'raw' (opcional)
+    """
+    key = request.args.get('key') or request.form.get('key')
+    if key != VERIFY_TOKEN:
+        return jsonify({"error": "forbidden"}), 403
+    data = request.get_json(silent=True) or request.form
+    provider = (data.get('provider') or '').strip().lower()
+    url_val = (data.get('url') or '').strip()
+    if provider == 'cloudinary' and CLOUDINARY_URL and cloudinary:
+        public_id = (data.get('public_id') or '').strip()
+        resource_type = (data.get('resource_type') or '').strip() or None
+        if not public_id and url_val:
+            public_id, inferred_type = _extract_cloudinary_public_id_from_url(url_val)
+            if not resource_type:
+                resource_type = inferred_type or 'image'
+        if not public_id:
+            return jsonify({"error": "missing public_id/url"}), 400
+        try:
+            # cloudinary.uploader.destroy soporta resource_type='image' por defecto; para raw/video se debe indicar
+            resp = cloudinary.uploader.destroy(public_id, resource_type=resource_type or 'image')
+            return jsonify({"ok": True, "result": resp}), 200
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+    elif provider == 'local' or not provider:
+        # Borrar archivo de static/uploads por nombre tomado desde la URL
+        try:
+            from urllib.parse import urlparse
+            p = urlparse(url_val)
+            name = os.path.basename(p.path) if p and p.path else (data.get('name') or '')
+            if not name:
+                return jsonify({"error": "missing name/url"}), 400
+            dest = os.path.join(UPLOAD_DIR, secure_filename(name))
+            if os.path.exists(dest):
+                os.remove(dest)
+            return jsonify({"ok": True}), 200
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+    else:
+        return jsonify({"error": "unknown provider or cloudinary not configured"}), 400
 
 
 @app.route('/settings', methods=['GET', 'POST'])
