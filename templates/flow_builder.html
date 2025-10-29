@@ -151,13 +151,8 @@
     let flow = {{ flow|tojson }};
     const UPLOAD_MAX_MB = {{ upload_max_mb|default(10) }};
   if (!flow || typeof flow !== 'object') flow = { start_node: null, nodes: {} };
-    // Defaults para links (inyectados desde el backend)
-    const DEFAULT_LINKS = {
-      web: {{ (store_url or '')|tojson }},
-      fb: {{ (fb_url or '')|tojson }},
-      ig: {{ (ig_url or '')|tojson }},
-      tiktok: {{ (tiktok_url or '')|tojson }}
-    };
+    // Defaults para links: sin valores del entorno; el usuario define todo en el panel
+    const DEFAULT_LINKS = { web: "", fb: "", ig: "", tiktok: "" };
 
   const nodesEl = document.getElementById('nodes');
     const linesSvg = document.querySelector('svg.lines');
@@ -180,14 +175,7 @@
     function ensureDefaults(){
       if (typeof flow.enabled !== 'boolean') flow.enabled = true;
       if (!flow.nodes) flow.nodes = {};
-      // Si no hay nodos, crear flujo base con trigger (saludo) -> welcome
-      if (Object.keys(flow.nodes).length === 0) {
-        flow.nodes = {
-          'trigger_1': { type: 'trigger', trigger_type: 'keywords', patterns: 'hola, holi, buenas', enabled: true, next: 'welcome', pos: { x: 40, y: 40 } },
-          'welcome': { type: 'action', text: '👋 Hola, soy Fanty, tu asistente virtual. ¡Bienvenida!', buttons: [], pos: { x: 420, y: 40 } }
-        };
-        flow.start_node = 'welcome';
-      }
+      // No crear nodos automáticos; todo se arma desde el panel
       flow.start_node = flow.start_node || Object.keys(flow.nodes)[0] || null;
       for (const k of Object.keys(flow.nodes)) {
         flow.nodes[k].text = flow.nodes[k].text || '';

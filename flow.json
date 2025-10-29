@@ -6,8 +6,8 @@
       "text": "👋 Hola, soy Fanty, tu asistente. ¿Qué deseas hacer hoy?",
       "buttons": [
         { "title": "📦 Ver catálogo", "next": "categorias" },
-        { "title": "ℹ️ Hablar con asesor", "next": "advisor" },
-        { "title": "💬 Más opciones", "id": "MAS_OPCIONES" }
+        { "title": "ℹ️ Asesor", "next": "advisor" },
+        { "title": "💬 Más opciones", "next": "more" }
       ]
     },
     "advisor": {
@@ -27,27 +27,32 @@
     },
     "cat_disfraz": {
       "type": "action",
-      "text": "Aquí tienes el catálogo de Disfraz Sexy. ¿Quieres volver al listado o hablar con una asesora?",
+      "text": "Catálogo Disfraz Sexy.",
       "buttons": [
-        { "title": "🔙 Volver a categorías", "next": "categorias" },
-        { "title": "ℹ️ Hablar con asesor", "next": "advisor" }
+        { "title": "🔙 Volver", "next": "categorias" },
+        { "title": "ℹ️ Asesor", "next": "advisor" }
       ]
     },
     "cat_lenceria": {
       "type": "action",
-      "text": "Aquí tienes el catálogo de Lencería. ¿Quieres volver al listado o hablar con una asesora?",
+      "text": "Catálogo Lencería.",
       "buttons": [
-        { "title": "🔙 Volver a categorías", "next": "categorias" },
-        { "title": "ℹ️ Hablar con asesor", "next": "advisor" }
+        { "title": "🔙 Volver", "next": "categorias" },
+        { "title": "ℹ️ Asesor", "next": "advisor" }
       ]
     },
     "cat_mallas": {
       "type": "action",
-      "text": "Aquí tienes el catálogo de Mallas. ¿Quieres volver al listado o hablar con una asesora?",
+      "text": "Catálogo Mallas.",
       "buttons": [
-        { "title": "🔙 Volver a categorías", "next": "categorias" },
-        { "title": "ℹ️ Hablar con asesor", "next": "advisor" }
+        { "title": "🔙 Volver", "next": "categorias" },
+        { "title": "ℹ️ Asesor", "next": "advisor" }
       ]
+    },
+    "more": {
+      "type": "action",
+      "text": "",
+      "buttons": []
     }
   }
 }

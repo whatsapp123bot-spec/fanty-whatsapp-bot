@@ -534,10 +534,9 @@ def send_flow_node(to: str, node_id: str):
         pass
 
     if ntype == 'advisor':
-        # Preparar mensaje con enlace directo a WhatsApp del asesor y links de redes/web
+        # Preparar mensaje solo con datos provistos en el nodo; sin valores por defecto del entorno
         raw_phone = (node.get('phone') or '').strip()
         digits = ''.join(ch for ch in raw_phone if ch.isdigit() or ch == '+')
-        link = f"https://wa.me/{digits.lstrip('+')}" if digits else WHATSAPP_ADVISOR_URL
 
         lines = []
         if text:
@@ -555,17 +554,10 @@ def send_flow_node(to: str, node_id: str):
             _add_line('Facebook', 'fb')
             _add_line('Instagram', 'ig')
             _add_line('TikTok', 'tiktok')
-        elif node.get('include_links', True):
-            lines.append("\nMientras tanto, puedes revisar:")
-            if STORE_URL:
-                lines.append(f"• Web: {STORE_URL}")
-            if FB_URL:
-                lines.append(f"• Facebook: {FB_URL}")
-            if IG_URL:
-                lines.append(f"• Instagram: {IG_URL}")
-            if TIKTOK_URL:
-                lines.append(f"• TikTok: {TIKTOK_URL}")
-        lines.append(f"\nChatear: {link}")
+        # Link de chat solo si se configuró un número
+        if digits:
+            link = f"https://wa.me/{digits.lstrip('+')}"
+            lines.append(f"\nChatear: {link}")
         body_text = "\n".join(lines)
         # Habilitar chat humano para este usuario con timeout configurable
         try:
@@ -974,30 +966,8 @@ def webhook():
                                     next_id = reply_id.split(':', 1)[1]
                                     send_flow_node(from_wa, next_id)
                                 else:
-                                    # Compatibilidad con IDs clásicos si no son del flujo
-                                    rid = (reply_id or '').upper()
-                                    try:
-                                        if rid == 'MENU_PRINCIPAL' and (FLOW_CONFIG or {}).get('start_node'):
-                                            send_flow_node(from_wa, (FLOW_CONFIG or {}).get('start_node'))
-                                        elif rid in ('VER_CATALOGO', 'VER_CATALOGO_PDF', 'VOLVER_CATALOGO'):
-                                            if ((FLOW_CONFIG or {}).get('nodes') or {}).get('categorias'):
-                                                send_flow_node(from_wa, 'categorias')
-                                            else:
-                                                send_whatsapp_buttons_categories(from_wa)
-                                        elif rid in ('HABLAR_ASESOR', 'ASESOR', 'CONTACTAR_ASESOR'):
-                                            send_whatsapp_buttons_advisor(from_wa)
-                                        elif rid in ('MAS_OPCIONES', 'MAS', 'OPCIONES'):
-                                            send_whatsapp_more_options(from_wa)
-                                        elif rid == 'VER_PAGOS':
-                                            send_whatsapp_buttons_payments(from_wa)
-                                        elif rid in ('VER_ENVIO', 'VER_ENVIOS'):
-                                            send_whatsapp_buttons_shipping(from_wa)
-                                        elif rid in ('UBIC_LIMA', 'LIMA'):
-                                            send_whatsapp_buttons_shipping_lima(from_wa)
-                                        elif rid in ('UBIC_PROVINCIAS', 'PROVINCIAS'):
-                                            send_whatsapp_buttons_shipping_provincias(from_wa)
-                                    except Exception:
-                                        pass
+                                    # Si no es un id de flujo (FLOW:<id>), no hacemos nada.
+                                    pass
                                 # Para cualquier otro id, no respondemos (todo se gestiona desde el panel)
                                 
                     else:
