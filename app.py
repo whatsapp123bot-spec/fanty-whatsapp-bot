@@ -623,6 +623,14 @@ def send_flow_node(to: str, node_id: str):
                 return send_flow_node(to, node.get('next'))
             except Exception:
                 pass
+        # Si es un nodo terminal (action sin botones y sin next), limpiar estado de flujo
+        try:
+            raw_buttons = (node.get('buttons') or [])[:3]
+            has_btns = any((b.get('next') or b.get('id')) for b in raw_buttons)
+            if ntype == 'action' and not node.get('next') and not has_btns:
+                db_execute("UPDATE users SET flow_node=NULL WHERE wa_id=?", (to,))
+        except Exception:
+            pass
         return sent
 
 
@@ -802,7 +810,7 @@ def webhook():
                                 responded = False
                                 if flow_enabled and flow_nodes:
                                     # Si el usuario ya está en un flujo, NO re-evaluar triggers ni nodos de inicio
-                                    if has_active_flow(from_wa):
+                                    if has_active_flow(from_wa, window_sec=120):
                                         hint = "Por favor, selecciona una opción de los botones anteriores para continuar."
                                         try:
                                             if AI_ENABLED:
