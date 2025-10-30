@@ -1,45 +1,99 @@
-# Fanty — Asistente Virtual de Fantasía Íntima (Flask)
+# Fanty — WhatsApp Bot (Django)
 
-Simulador tipo WhatsApp en Python + Flask donde el asistente “Fanty” responde automáticamente y el administrador puede subir catálogos PDF (Disfraz Sexy, Lencería, Mallas). Funciona localmente y puede exponerse con Ngrok.
+Backend en Django con panel para bots, editor visual de flujos (Builder), chat en vivo y “Cerebro de IA”. Todo lo necesario para operar por WhatsApp Cloud API.
 
-## Objetivo
+Importante: Se removió el código antiguo de Flask para evitar confusiones. Usa exclusivamente el proyecto Django en `mi_chatfuel/`.
 
-- Editor visual de flujo con vista previa integrada (abre `/chat` desde el propio builder).
-- Subir y gestionar assets desde el editor visual (imágenes, PDFs, etc.).
-- Responder en el chat con botones o encadenar nodos (conector de salida) y enviar archivos.
-- Endpoint `/webhook` listo para la integración con WhatsApp Cloud API.
+## Características
 
-## Funciones
+- Panel de bots con validación encapsulada en modal y estilos modernos.
+- Editor visual (“Builder”) con zoom/pan, grid, líneas entre nodos, adjuntos, “Ajustar a pantalla” y “Cerebro de IA”.
+- “Cerebro de IA”: define perfil del asistente y perfil del negocio (redes, pagos Yape/Plin/Tarjeta/Transferencia, envíos, políticas, mayorista/menor) guardado en `flow.ai_config`.
+- Chat en vivo integrado al panel con selección y badges de no leídos.
+- Carga de archivos desde el Builder (imágenes/PDFs) con límite configurable.
+- Soporte de múltiples API keys de IA con failover (Admin → AI Keys).
 
-- Builder visual con flechas y zoom (Ctrl + rueda), guardado asíncrono y “Vista previa” para probar el flujo.
-- Inicio por palabras clave o por frases exactas (para links), y nodo de asesor con pausa de flujo y enlaces sociales.
-- Chat en vivo para responder manualmente cuando el cliente pida hablar con humano.
-- Envío de multimedia (imágenes/PDFs) desde los nodos de acción.
+## Requisitos
 
-## Tecnologías
+- Python 3.11+ (probado con 3.13)
+- Pip/venv
 
-- Python 3.x
-- Flask (servidor y API)
-- HTML + CSS + JavaScript (UI simulada)
-- Ngrok o LocalTunnel (opcional)
+## Instalación y ejecución (Windows PowerShell)
 
-## Estructura
+```powershell
+# 1) Crear y activar entorno
+python -m venv venv
+.\venv\
+Scripts\Activate.ps1
+
+# 2) Instalar dependencias de Django
+python -m pip install -U pip
+python -m pip install -r .\mi_chatfuel\requirements.txt
+
+# 3) Migrar base de datos
+python .\mi_chatfuel\manage.py migrate
+
+# 4) (Opcional) Crear superusuario para /admin
+python .\mi_chatfuel\manage.py createsuperuser
+
+# 5) Ejecutar servidor de desarrollo
+python .\mi_chatfuel\manage.py runserver
+```
+
+Accesos típicos:
+- Panel: `/panel/`
+- Admin: `/admin/` (gestiona Bots, Flows, AI Keys)
+- Flujos por bot: `/panel/bots/<bot_id>/flows/`
+- Builder: `/panel/bots/<bot_id>/flows/<flow_id>/builder/`
+- Webhook de WhatsApp: `/webhooks/whatsapp/<bot_uuid>/`
+
+## Configuración de IA con failover
+
+Variables de entorno mínimas:
+- `AI_ENABLED=1` para habilitar IA.
+- `OPENROUTER_MODEL` (ej. `openrouter/auto`).
+
+Claves:
+- Sube varias claves en `/admin/` → “AI Keys” (provider: OpenRouter). El sistema rota automáticamente con prioridad y marca fallos.
+- Si defines `OPENROUTER_API_KEY` en entorno, se usa como último fallback.
+
+## Configuración de WhatsApp Cloud API
+
+En `/admin/` → Bots:
+- Phone Number ID
+- Access Token
+- Verify Token
+
+Webhook de verificación: `/webhooks/whatsapp/<bot_uuid>/`
+
+## Estructura relevante
 
 ```
 whatsapp-bot/
-├─ app.py
-├─ templates/
-│  ├─ index.html      # Panel principal con accesos al editor y chat en vivo
-│  ├─ chat.html       # Simulación tipo WhatsApp (vista previa)
-│  ├─ live_chat.html  # Panel de chat en vivo
-│  └─ flow_builder.html # Editor visual del flujo
-├─ static/
-│  └─ uploads/        # Cargados vía /internal/upload desde el builder
-├─ requirements.txt
-├─ .gitignore
-└─ venv/                # (local)
+├─ mi_chatfuel/
+│  ├─ manage.py
+│  ├─ mi_chatfuel/
+│  │  ├─ settings.py
+│  │  └─ urls.py
+│  ├─ bots/
+│  │  ├─ models.py        # Bot, Flow, MessageLog, AIKey
+│  │  ├─ views.py         # Panel, live chat, builder, webhook
+│  │  └─ admin.py         # Admin de Bot/Flow/MessageLog/AIKey
+│  └─ templates/
+│     ├─ flow_builder.html
+│     └─ bots/
+│        ├─ panel.html
+│        ├─ live_chat.html
+│        └─ flow_form.html
+└─ services/
+   └─ ai_service.py       # Rotación de API keys para IA (OpenRouter)
 ```
 
+## Notas
+
+- El antiguo `app.py` (Flask) y sus templates fueron removidos.
+- Usa `mi_chatfuel/requirements.txt`. Si existe otro `requirements.txt` en raíz, ignóralo.
+- Para archivos subidos desde el Builder, se guardan según `MEDIA_ROOT`/`MEDIA_URL` (configura en settings si lo deseas).
 ## Instalación (Windows PowerShell)
 
 ```powershell

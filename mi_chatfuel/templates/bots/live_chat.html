@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>OptiChat — Chat en vivo</title>
+  <style>
+    :root { --bg:#0f172a; --panel:#0b1220; --muted:#94a3b8; --text:#e2e8f0; --accent:#7c3aed; --green:#22c55e; --red:#ef4444; }
+    *{box-sizing:border-box}
+    body{margin:0;background:linear-gradient(180deg,#0b1220,#0f172a);color:var(--text);font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}
+  header{padding:16px 20px;border-bottom:1px solid rgba(255,255,255,.06);display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;background:rgba(11,18,32,.7);backdrop-filter: blur(8px); z-index:1000}
+    .brand{font-weight:800}
+    .container{display:grid;grid-template-columns: 320px 1fr; gap:12px; padding:12px; height: calc(100vh - 64px)}
+    .side,.main{background:var(--panel);border:1px solid rgba(255,255,255,.06);border-radius:16px;overflow:hidden}
+    .side{display:flex;flex-direction:column}
+    .tools{padding:10px;border-bottom:1px solid rgba(255,255,255,.06);display:flex;gap:8px;align-items:center}
+    .tools input[type="search"]{flex:1;padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,.12);background:#0a0f1a;color:#e5e7eb}
+    /* Switch para "Solo en vivo" */
+    .tools input[type="checkbox"]{appearance:none;width:34px;height:20px;border-radius:999px;background:#0a0f1a;border:1px solid rgba(255,255,255,.16);position:relative;outline:none;cursor:pointer;transition:background .15s ease,border-color .15s ease}
+    .tools input[type="checkbox"]::after{content:"";position:absolute;left:2px;top:2px;width:16px;height:16px;border-radius:999px;background:#cbd5e1;transition:transform .15s ease;background-clip:padding-box}
+    .tools input[type="checkbox"]:checked{background:rgba(34,197,94,.18);border-color:rgba(34,197,94,.5)}
+    .tools input[type="checkbox"]:checked::after{transform:translateX(14px);background:#bbf7d0}
+  .list{overflow:auto}
+  .item{padding:10px 12px;border-bottom:1px solid rgba(255,255,255,.06);cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:10px}
+  .item:hover{background:#0e1422}
+  .item.selected{background:linear-gradient(180deg,rgba(124,58,237,.12),rgba(124,58,237,.06));border-left:3px solid var(--accent)}
+  .item .left{display:flex;flex-direction:column;min-width:0}
+  .item .name{font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .item .meta{font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .item .right{display:flex;align-items:center;gap:8px}
+  .badge-unread{min-width:18px;height:18px;padding:0 6px;border-radius:999px;background:#ef4444;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;border:1px solid rgba(255,255,255,.22)}
+    .main{display:grid;grid-template-rows: auto 1fr auto}
+    .conv-head{padding:12px 14px;border-bottom:1px solid rgba(255,255,255,.06);display:flex;justify-content:space-between;align-items:center;background:linear-gradient(180deg,rgba(12,18,32,.35),rgba(12,18,32,.15))}
+    .chip{font-size:11px;padding:2px 8px;border-radius:999px;border:1px solid rgba(255,255,255,.12)}
+    .chip.on{background:rgba(34,197,94,.12);border-color:rgba(34,197,94,.35);color:#bbf7d0}
+    .chip.off{background:rgba(148,163,184,.12);color:#cbd5e1}
+    .msgs{padding:14px;overflow:auto;display:flex;flex-direction:column;gap:10px;background:radial-gradient(900px 360px at 0% 100%, rgba(30,64,175,.08), transparent 60%)}
+    .msg{max-width:70%;padding:10px 12px;border-radius:14px;font-size:14px}
+    .in{align-self:flex-start;background:#0e1726;border:1px solid rgba(255,255,255,.06)}
+    .out{align-self:flex-end;background:#1f2937;border:1px solid rgba(124,58,237,.35);box-shadow:0 4px 10px rgba(124,58,237,.18)}
+    .composer{padding:10px;border-top:1px solid rgba(255,255,255,.06);display:flex;gap:8px}
+    .composer input{flex:1;padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,.12);background:#0a0f1a;color:#e5e7eb}
+    .btn{appearance:none;border:0;border-radius:10px;padding:10px 14px;background:linear-gradient(135deg,#8b5cf6,#7c3aed);color:#fff;font-weight:700;cursor:pointer;transition:filter .15s ease, transform .1s ease}
+    .btn:active{transform:translateY(1px)}
+    .btn.minor{background:#111827;color:#e5e7eb;border:1px solid rgba(255,255,255,.08)}
+    .btn.ghost{background:transparent;color:#cbd5e1;border:1px dashed rgba(255,255,255,.18)}
+    .btn.success{background:linear-gradient(135deg,#34d399,#22c55e)}
+    .btn.danger{background:linear-gradient(135deg,#f87171,#ef4444)}
+    .btn:hover{filter:brightness(1.04)}
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">{{ brand }} • Chat en vivo</div>
+    <nav>
+      <a id="backLink" class="btn minor" href="/panel/">← Volver</a>
+    </nav>
+  </header>
+  <div class="container">
+    <aside class="side">
+      <div class="tools">
+        <input id="q" type="search" placeholder="Buscar..." oninput="renderList()"/>
+  <label class="btn ghost" style="display:flex;align-items:center;gap:10px"><input id="onlyLive" type="checkbox" onchange="loadConvs()"/> Solo en vivo</label>
+      </div>
+      <div id="list" class="list"></div>
+    </aside>
+    <section class="main">
+      <div class="conv-head">
+        <div>
+          <div id="convName" style="font-weight:800">Selecciona una conversación</div>
+          <div id="convId" style="font-size:12px;color:#94a3b8"></div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <span id="chipLive" class="chip off">Humano: inactivo</span>
+          <button class="btn success" onclick="toggleHuman(true)">Activar</button>
+          <button class="btn danger" onclick="toggleHuman(false)">Cerrar</button>
+        </div>
+      </div>
+      <div id="msgs" class="msgs"></div>
+      <div class="composer">
+        <input id="text" placeholder="Escribe un mensaje..." onkeydown="if(event.key==='Enter') send()"/>
+        <button class="btn" onclick="send()">Enviar</button>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    let items=[]; let filtered=[]; let current=null; let onlyLive=false; let pollId=null;
+    const params = new URLSearchParams(location.search);
+    const BOT_ID = params.get('bot');
+    // Ajustar destino del botón Volver si tenemos contexto de bot
+    (function(){
+      const a = document.getElementById('backLink');
+      if (a && BOT_ID) a.href = `/panel/bots/${encodeURIComponent(BOT_ID)}/flows/`;
+    })();
+    function getCookie(name){
+      const v = `; ${document.cookie}`; const p = v.split(`; ${name}=`); if (p.length===2) return p.pop().split(';').shift();
+    }
+    async function loadConvs(){
+      onlyLive = document.getElementById('onlyLive').checked;
+      const r = await fetch(`/panel/api/conversations/?live=${onlyLive?1:0}${BOT_ID?`&bot=${encodeURIComponent(BOT_ID)}`:''}`);
+      const j = await r.json(); items = j.items||[]; renderList();
+    }
+    function renderList(){
+      const q = (document.getElementById('q').value||'').toLowerCase();
+      filtered = items.filter(i => (i.name||'').toLowerCase().includes(q) || (i.wa_id||'').includes(q));
+      const host = document.getElementById('list'); host.innerHTML='';
+      filtered.forEach(i => {
+        const div = document.createElement('div'); div.className='item'; div.onclick=()=>openConv(i);
+        if (current && current.wa_id===i.wa_id) div.classList.add('selected');
+        const unread = (typeof i.unread!=='undefined'?i.unread:(typeof i.unread_count!=='undefined'?i.unread_count:(typeof i.unreadCount!=='undefined'?i.unreadCount:0)))||0;
+        const left = `<div class="left"><div class="name">${i.name||i.wa_id}</div><div class="meta">${i.wa_id} • ${i.bot_name}${i.human_requested?' • 🟢':''}</div></div>`;
+        const right = `<div class="right">${unread>0?`<span class="badge-unread">${unread>99?'99+':unread}</span>`:''}</div>`;
+        div.innerHTML = left + right;
+        host.appendChild(div);
+      })
+    }
+    async function openConv(i){
+      current = i; document.getElementById('convName').textContent = i.name||i.wa_id; document.getElementById('convId').textContent = `${i.wa_id} • ${i.bot_name}`;
+      document.getElementById('chipLive').className = 'chip ' + (i.human_requested?'on':'off');
+      document.getElementById('chipLive').textContent = 'Humano: ' + (i.human_requested?'activo':'inactivo');
+  const r = await fetch(`/panel/api/conversations/${encodeURIComponent(i.wa_id)}/${BOT_ID?`?bot=${encodeURIComponent(BOT_ID)}`:''}`);
+      const j = await r.json();
+      const host = document.getElementById('msgs'); host.innerHTML='';
+      (j.messages||[]).forEach(m => {
+        const dv = document.createElement('div'); dv.className = 'msg ' + (m.direction==='in'?'in':'out');
+        dv.textContent = m.body || `[${m.type}]`;
+        host.appendChild(dv);
+      });
+      host.scrollTop = host.scrollHeight;
+      // limpiar no leídos en la UI para esta conversación y re-render lista
+      items = (items||[]).map(x => x.wa_id===i.wa_id ? ({...x, unread:0, unread_count:0, unreadCount:0}) : x);
+      renderList();
+      // activar polling de mensajes
+      if (pollId) clearInterval(pollId);
+      pollId = setInterval(()=>{ if(current) openConv(current); }, 8000);
+    }
+    async function send(){
+      if (!current) return; const tx = document.getElementById('text'); const t = (tx.value||'').trim(); if (!t) return;
+  const fd = new FormData(); fd.append('wa_id', current.wa_id); fd.append('text', t); if (BOT_ID) fd.append('bot', BOT_ID);
+      const r = await fetch('/panel/api/send/', { method:'POST', body: fd, headers: { 'X-CSRFToken': getCookie('csrftoken') || '' } }); const j = await r.json();
+      if (!j.ok){ alert(j.error||'Error'); return; }
+      tx.value=''; openConv(current);
+    }
+    async function toggleHuman(on){
+  if (!current) return; const fd = new FormData(); fd.append('wa_id', current.wa_id); fd.append('on', on? '1':'0'); if (BOT_ID) fd.append('bot', BOT_ID);
+      const r = await fetch('/panel/api/human/', { method:'POST', body: fd, headers: { 'X-CSRFToken': getCookie('csrftoken') || '' } }); const j = await r.json();
+      if (!j.ok){ alert(j.error||'Error'); return; }
+      // Refresh list and header chip
+      loadConvs(); if (current){ current.human_requested = on; openConv(current); }
+    }
+    loadConvs(); setInterval(loadConvs, 15000);
+  </script>
+</body>
+</html>

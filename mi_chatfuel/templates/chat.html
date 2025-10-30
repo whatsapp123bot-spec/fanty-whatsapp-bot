@@ -5,24 +5,25 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Fanty — Vista previa</title>
     <style>
+        html, body { height: 100%; }
         body {
             background-color: #e5ddd5;
             display: flex;
             justify-content: center;
             align-items: center;
-            height: 100vh;
+            height: 100%;
             margin: 0;
             font-family: Arial, sans-serif;
         }
         .chat-container {
-            width: 360px;
-            height: 600px;
+            width: 100%;
+            height: 100%;
             background-color: #fff;
-            border-radius: 20px;
+            border-radius: 0;
             display: flex;
             flex-direction: column;
             overflow: hidden;
-            box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+            box-shadow: none;
         }
         .chat-header {
             background-color: #075e54;
@@ -32,7 +33,7 @@
         }
         .messages {
             flex: 1;
-            padding: 15px;
+            padding: 12px;
             overflow-y: auto;
             display: flex;
             flex-direction: column;
@@ -53,6 +54,10 @@
             background-color: #f1f0f0;
             align-self: flex-start;
         }
+    /* Botones al estilo WhatsApp: listados, anchos, debajo del mensaje */
+    .wa-buttons { align-self:flex-start; width:80%; display:flex; flex-direction:column; gap:8px; margin:6px 0 10px 0; }
+    .wa-btn { display:flex; align-items:center; gap:10px; width:100%; padding:10px 14px; border-radius:12px; border:1px solid #e6e6e6; background:#ffffff; color:#374151; font-size:16px; font-weight:500; cursor:pointer; text-align:left; box-shadow:0 1px 2px rgba(0,0,0,.03); }
+    .wa-btn:hover { background:#f7f8f9; }
         .input-container {
             display: flex;
             padding: 10px;
@@ -77,7 +82,7 @@
             cursor: pointer;
             font-size: 16px;
         }
-        .quick-replies { display:flex; gap:8px; padding: 0 10px 10px; flex-wrap: wrap; }
+    /* (las respuestas rápidas ya no van abajo) */
     </style>
 </head>
 <body>
@@ -86,7 +91,7 @@
         <div class="messages" id="messages">
             <div class="bot">👋 ¡Hola! Soy tu asistente virtual.</div>
         </div>
-        <div class="quick-replies" id="quickReplies"></div>
+        
         <div class="input-container">
             <input type="text" id="messageInput" placeholder="Escribe un mensaje..." />
             <button id="sendBtn" title="Enviar">➤</button>
@@ -97,30 +102,7 @@
         const input = document.getElementById('messageInput');
         const messagesDiv = document.getElementById('messages');
         const sendBtn = document.getElementById('sendBtn');
-        const quickReplies = document.getElementById('quickReplies');
-
-        function renderQuickReplies(options) {
-            quickReplies.innerHTML = '';
-            if (!options || !Array.isArray(options) || options.length === 0) {
-                quickReplies.style.display = 'none';
-                return;
-            }
-            quickReplies.style.display = 'flex';
-            for (const opt of options) {
-                const b = document.createElement('button');
-                b.textContent = opt.title;
-                b.style.background = '#e1f3f0';
-                b.style.color = '#075e54';
-                b.style.borderRadius = '16px';
-                b.style.padding = '6px 10px';
-                b.style.height = 'auto';
-                b.style.width = 'auto';
-                b.style.fontSize = '14px';
-                b.style.cursor = 'pointer';
-                b.addEventListener('click', () => sendPayload(opt.payload, opt.title));
-                quickReplies.appendChild(b);
-            }
-        }
+        
 
         function appendBotMessage(data) {
             const botMsg = document.createElement('div');
@@ -130,8 +112,20 @@
             } else {
                 botMsg.textContent = data.response || '❓ Respuesta vacía';
             }
+            // Opciones estilo WhatsApp (botones listados, debajo del mensaje)
             messagesDiv.appendChild(botMsg);
-            renderQuickReplies(data.options);
+            if (data.options && Array.isArray(data.options) && data.options.length) {
+                const wrap = document.createElement('div');
+                wrap.className = 'wa-buttons';
+                data.options.forEach(opt => {
+                    const b = document.createElement('button');
+                    b.className = 'wa-btn';
+                    b.textContent = opt.title || 'Opción';
+                    b.addEventListener('click', () => sendPayload(opt.payload, opt.title));
+                    wrap.appendChild(b);
+                });
+                messagesDiv.appendChild(wrap);
+            }
             messagesDiv.scrollTop = messagesDiv.scrollHeight;
         }
 

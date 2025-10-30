@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>OptiChat — Panel</title>
+  <style>
+    :root { --bg:#0f172a; --card:#0b1220; --muted:#94a3b8; --text:#e2e8f0; --accent:#7c3aed; --accent2:#22c55e; --danger:#ef4444; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:linear-gradient(180deg, #0b1220, #0f172a); color:var(--text); font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
+  header { padding:18px 22px; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid rgba(255,255,255,.06); position:sticky; top:0; background:rgba(11,18,32,.7); backdrop-filter: blur(8px); z-index:1000; }
+    .brand { display:flex; align-items:center; gap:10px; font-weight:800; font-size:18px; letter-spacing:.3px; }
+    .brand .dot { width:10px; height:10px; border-radius:50%; background: radial-gradient(circle at 30% 30%, #a78bfa, #7c3aed); box-shadow: 0 0 12px rgba(124,58,237,.8); }
+    .container { max-width: 1100px; margin: 24px auto; padding: 0 16px; }
+    /* Banda decorativa para diferenciar el área bajo el header */
+    .band { background:
+        radial-gradient(800px 300px at -10% 0%, rgba(124,58,237,.18), transparent 60%),
+        radial-gradient(700px 260px at 110% 120%, rgba(34,197,94,.12), transparent 55%),
+        rgba(11,18,32,.55);
+      border:1px solid rgba(255,255,255,.06);
+      border-radius:18px; padding:16px; margin-bottom:16px;
+      backdrop-filter: blur(4px);
+      box-shadow: 0 8px 28px rgba(0,0,0,.18) inset, 0 6px 16px rgba(0,0,0,.18);
+    }
+  .toolbar { display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; gap:12px; flex-wrap:wrap; }
+    .title { font-size:22px; font-weight:800; }
+    .muted { color: var(--muted); font-size:13px; }
+  .controls { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  .search { display:flex; align-items:center; gap:8px; background: #0a1020; border:1px solid rgba(255,255,255,.08); border-radius:12px; padding:8px 10px; }
+  .search input { background:transparent; border:0; outline:none; color:#e5e7eb; min-width:220px; }
+  .select { appearance:none; background:#0a1020; border:1px solid rgba(255,255,255,.08); color:#e5e7eb; border-radius:10px; padding:9px 12px; }
+    .btn { appearance:none; border:0; border-radius:10px; padding:10px 14px; background: linear-gradient(135deg, #8b5cf6, #7c3aed); color:#fff; font-weight:700; cursor:pointer; box-shadow: 0 8px 24px rgba(124,58,237,.25); }
+    .btn:active { transform: translateY(1px); }
+  /* Superficie con contraste sutil para el contenido */
+  .surface { background:
+      radial-gradient(900px 360px at 0% 100%, rgba(30,64,175,.12), transparent 60%),
+      linear-gradient(180deg, rgba(2,6,23,.45), rgba(2,6,23,.25));
+    border:1px solid rgba(255,255,255,.06); border-radius:18px; padding:14px; box-shadow: 0 6px 18px rgba(0,0,0,.18) inset; }
+  .list { display:grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap:14px; }
+  .card { background: radial-gradient(1200px 600px at 0% -10%, rgba(124,58,237,.08), transparent 60%), radial-gradient(1000px 500px at 120% 120%, rgba(34,197,94,.06), transparent 50%), var(--card); border:1px solid rgba(255,255,255,.06); border-radius:16px; padding:14px; display:flex; flex-direction:column; gap:10px; transition: border-color .15s ease, transform .15s ease, box-shadow .15s ease; position:relative; }
+  .card:hover { border-color: rgba(124,58,237,.35); transform: translateY(-1px); }
+  .card.active { box-shadow: 0 0 0 1px rgba(34,197,94,.25) inset, 0 10px 24px rgba(34,197,94,.06); }
+  .card.active:before { content:""; position:absolute; left:0; top:0; bottom:0; width:3px; border-radius:16px 0 0 16px; background: linear-gradient(180deg, #34d399, #16a34a); box-shadow: 0 0 0 1px rgba(34,197,94,.25); }
+    .card h3 { margin:0; font-size:16px; font-weight:800; letter-spacing:.2px; display:flex; align-items:center; gap:8px; }
+    .chip { font-size:11px; padding:2px 8px; border-radius:999px; border:1px solid rgba(255,255,255,.12); color:#cbd5e1; }
+    .chip.on { background: rgba(34,197,94,.12); border-color: rgba(34,197,94,.35); color:#bbf7d0; }
+    .chip.off { background: rgba(148,163,184,.12); }
+    .row { display:flex; align-items:center; gap:8px; justify-content:space-between; }
+  .kv { font-size:12px; color: var(--muted); }
+  /* Evitar desbordes en valores largos (PNID/Webhook) */
+  .kv { display:flex; gap:8px; align-items:flex-start; justify-content:flex-start; }
+  .kv > div:first-child { min-width:90px; flex:0 0 auto; }
+  .kv .mono { display:block; width:100%; overflow-wrap:anywhere; word-break:break-word; white-space:normal; }
+    .kv strong { color: var(--text); font-weight:700; }
+    .actions { display:flex; flex-wrap:wrap; gap:8px; }
+    .btn.minor { background:#111827; color:#e5e7eb; border:1px solid rgba(255,255,255,.08); box-shadow:none; }
+    .btn.link { background: transparent; border:1px dashed rgba(255,255,255,.16); color:#c4b5fd; }
+  .empty { text-align:center; padding:40px; border:1px dashed rgba(255,255,255,.12); border-radius:16px; color:var(--muted); background: rgba(11,18,32,.35); }
+    .footer { text-align:center; margin:18px 0; color: var(--muted); font-size:12px; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+    .copy { cursor:pointer; color:#a78bfa; text-decoration: underline; }
+    .kbd { font-size:11px; padding:2px 6px; border-radius:6px; border:1px solid rgba(255,255,255,.12); color:#cbd5e1; background: rgba(0,0,0,.15); }
+    .toast { position:fixed; left:50%; transform: translateX(-50%); bottom:16px; background:#111827; color:#e5e7eb; border:1px solid rgba(255,255,255,.12); border-radius:10px; padding:8px 12px; font-weight:700; box-shadow:0 8px 22px rgba(0,0,0,.35); display:none; z-index:10000; }
+    /* Modal Validar */
+    .modal-backdrop{position:fixed; inset:0; background:rgba(2,6,23,.6); backdrop-filter: blur(6px); display:none; align-items:center; justify-content:center; z-index:9999;}
+    .modal{width:min(920px,92vw); height:min(70vh,640px); background: radial-gradient(900px 360px at 0% 100%, rgba(30,64,175,.12), transparent 60%), linear-gradient(180deg, rgba(2,6,23,.85), rgba(2,6,23,.65)); border:1px solid rgba(255,255,255,.10); border-radius:16px; box-shadow: 0 20px 60px rgba(0,0,0,.45); display:flex; flex-direction:column; overflow:hidden}
+    .modal-header{display:flex; align-items:center; justify-content:space-between; padding:12px 14px; border-bottom:1px solid rgba(255,255,255,.08); background:linear-gradient(180deg, rgba(12,18,32,.35), rgba(12,18,32,.15))}
+    .modal-title{font-weight:800}
+    .modal-close{appearance:none; border:0; background:#111827; color:#e5e7eb; border:1px solid rgba(255,255,255,.12); border-radius:8px; padding:6px 10px; cursor:pointer}
+  .modal-body{position:relative; flex:1; background:#0a0f1a}
+  .modal-body .modal-actions{position:absolute; right:10px; top:10px; z-index:2; display:flex; gap:8px}
+  .modal-body .open-new{appearance:none; border:0; background:#111827; color:#cbd5e1; border:1px solid rgba(255,255,255,.12); border-radius:8px; padding:6px 10px; cursor:pointer; text-decoration:none}
+  .modal-body iframe{position:absolute; inset:0; width:100%; height:100%; border:0; background:#0a0f1a}
+  .modal-loading{position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:#cbd5e1; font-weight:700}
+  .modal-result{position:absolute; inset:0; padding:12px; color:#e5e7eb; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size:12px; white-space:pre-wrap; overflow:auto}
+  .error-box{border:1px solid rgba(239,68,68,.45); background:rgba(239,68,68,.08); color:#fecaca; padding:10px; border-radius:10px}
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand"><span class="dot"></span> {{ brand }} <span class="muted">Panel</span></div>
+    <nav class="actions">
+      <a class="btn minor" href="/admin/">Admin</a>
+      <a class="btn minor" href="/accounts/logout/">Salir</a>
+    </nav>
+  </header>
+
+  <div class="container">
+    <div class="band">
+    <div class="toolbar">
+      <div>
+        <div class="title">Tus Bots <span id="count" class="muted"></span></div>
+        <div class="muted">Gestiona tus credenciales, flujos y webhooks <span class="kbd">/</span> para buscar</div>
+      </div>
+      <div class="controls">
+        <label class="search">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+          <input id="search" type="search" placeholder="Buscar por nombre, PNID o URL" />
+        </label>
+        <select id="sort" class="select" title="Ordenar">
+          <option value="name">Nombre (A–Z)</option>
+          <option value="active">Activo primero</option>
+        </select>
+        <a class="btn" href="/panel/bots/new/">+ Nuevo Bot</a>
+      </div>
+  </div>
+  </div>
+
+    {% if bots %}
+      <div class="surface">
+      <div class="list">
+        {% for b in bots %}
+          <div class="card{% if b.is_active %} active{% endif %}" data-name="{{ b.name|escape }}" data-active="{% if b.is_active %}1{% else %}0{% endif %}" data-pnid="{{ b.pnid|escape }}" data-webhook="{{ b.webhook_url|escape }}">
+            <h3>
+              {{ b.name }}
+              {% if b.is_active %}<span class="chip on">Activo</span>{% else %}<span class="chip off">Inactivo</span>{% endif %}
+            </h3>
+            <div class="row kv"><div>PNID</div><div class="mono"><span id="pn-{{ b.id }}">{{ b.pnid }}</span> <span class="copy" onclick="copyTxt('{{ b.pnid }}')">copiar</span></div></div>
+            <div class="row kv"><div>Webhook</div>
+              <div class="mono">
+                <span id="wb-{{ b.id }}">{{ b.webhook_url }}</span>
+                <span class="copy" onclick="copyTxt('{{ b.webhook_url }}')">copiar</span>
+              </div>
+            </div>
+            <div class="actions">
+              <a class="btn minor" href="{{ b.edit_url }}">Editar</a>
+              <a class="btn minor validate" href="{{ b.validate_url }}">Validar</a>
+              <a class="btn" href="{{ b.flows_url }}">Flujos</a>
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+      </div>
+    {% else %}
+      <div class="empty">
+        Aún no tienes bots. Crea el primero para empezar a construir tu flujo.
+        <div style="margin-top:14px;"><a class="btn" href="/panel/bots/new/">Crear mi primer bot</a></div>
+      </div>
+    {% endif %}
+
+    <div class="footer">OptiChat • Hecho con cariño para flujos de WhatsApp</div>
+  </div>
+
+  <script>
+    // Toast simple
+    function showToast(msg){
+      let t = document.getElementById('toast');
+      if (!t){ t = document.createElement('div'); t.id='toast'; t.className='toast'; document.body.appendChild(t); }
+      t.textContent = msg; t.style.display='block';
+      clearTimeout(window.__tt); window.__tt = setTimeout(()=>{ t.style.display='none'; }, 1600);
+    }
+
+    // Copiado mejorado
+    async function copyTxt(text){
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText){ await navigator.clipboard.writeText(text); }
+        else {
+          const ta = document.createElement('textarea'); ta.value=text; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta);
+        }
+        showToast('Copiado');
+      } catch(e){ /* noop */ }
+    }
+
+    // Filtro y ordenamiento
+    (function(){
+      const list = document.querySelector('.list');
+      if (!list) return;
+      const cards = Array.from(list.children);
+      const search = document.getElementById('search');
+      const sort = document.getElementById('sort');
+      const count = document.getElementById('count');
+
+      function apply(){
+        const q = (search?.value||'').toLowerCase().trim();
+        let visible = 0;
+        cards.forEach(c => {
+          const name = (c.dataset.name||'').toLowerCase();
+          const pnid = (c.dataset.pnid||'').toLowerCase();
+          const wb = (c.dataset.webhook||'').toLowerCase();
+          const show = !q || name.includes(q) || pnid.includes(q) || wb.includes(q);
+          c.style.display = show ? '' : 'none';
+          if (show) visible++;
+        });
+        if (count) count.textContent = visible ? `· ${visible}` : '';
+
+        // Orden
+        const mode = sort?.value || 'name';
+        const sorted = cards.slice().filter(c => c.style.display !== 'none');
+        sorted.sort((a,b)=>{
+          if (mode==='active') return (b.dataset.active||'0').localeCompare(a.dataset.active||'0') || (a.dataset.name||'').localeCompare(b.dataset.name||'');
+          return (a.dataset.name||'').localeCompare(b.dataset.name||'');
+        });
+        sorted.forEach(el => list.appendChild(el));
+      }
+      search?.addEventListener('input', apply);
+      sort?.addEventListener('change', apply);
+      // Atajo: / para enfocar búsqueda
+      document.addEventListener('keydown', (e)=>{
+        if (e.key === '/' && !e.target.closest('input,textarea,select')){ e.preventDefault(); search?.focus(); }
+      });
+      apply();
+    })();
+
+    // Modal Validar (encapsular resultado)
+    (function(){
+      // Crear modal en DOM
+      const backdrop = document.createElement('div');
+      backdrop.className = 'modal-backdrop';
+      backdrop.innerHTML = `
+        <div class="modal" role="dialog" aria-modal="true" aria-label="Resultado de validación">
+          <div class="modal-header">
+            <div class="modal-title">Resultado de validación</div>
+            <button class="modal-close" type="button">Cerrar</button>
+          </div>
+          <div class="modal-body">
+            <div class="modal-actions"><a class="open-new" id="openNewTab" href="#" target="_blank" rel="noopener">Abrir en nueva pestaña</a></div>
+            <div class="modal-loading">Cargando…</div>
+            <div class="modal-result" id="validateResult" style="display:none"></div>
+            <iframe id="validateFrame" style="display:none"></iframe>
+          </div>
+        </div>`;
+      document.body.appendChild(backdrop);
+
+  const iframe = backdrop.querySelector('#validateFrame');
+  const closeBtn = backdrop.querySelector('.modal-close');
+  const loading = backdrop.querySelector('.modal-loading');
+  const resultBox = backdrop.querySelector('#validateResult');
+  const openNew = backdrop.querySelector('#openNewTab');
+  let lastUrl = '';
+
+      function openValidate(url){
+        lastUrl = url;
+        loading.style.display = 'flex';
+        resultBox.style.display = 'none';
+        resultBox.innerHTML = '';
+        iframe.style.display = 'none';
+        iframe.src = 'about:blank';
+        openNew.href = url;
+        backdrop.style.display = 'flex';
+        // Evitar scroll del body
+        document.documentElement.style.overflow = 'hidden';
+        tryFetchThenIframe(url);
+      }
+
+      function closeValidate(){
+        backdrop.style.display = 'none';
+        iframe.src = 'about:blank';
+        document.documentElement.style.overflow = '';
+      }
+
+      // Delegación de clicks en botones Validar
+      document.addEventListener('click', (e)=>{
+        const a = e.target.closest('a.validate');
+        if (!a) return;
+        e.preventDefault();
+        openValidate(a.href);
+      });
+
+      // Cerrar con botón, fondo o ESC
+      closeBtn.addEventListener('click', closeValidate);
+      backdrop.addEventListener('click', (e)=>{ if (e.target === backdrop) closeValidate(); });
+      document.addEventListener('keydown', (e)=>{ if (e.key === 'Escape' && backdrop.style.display === 'flex') closeValidate(); });
+
+      async function tryFetchThenIframe(url){
+        try {
+          const r = await fetch(url, { credentials: 'same-origin', headers: { 'Accept': 'text/plain, application/json;q=0.9, text/html;q=0.8, */*;q=0.5' } });
+          if (!r.ok) throw new Error('HTTP '+r.status+' '+(r.statusText||''));
+          const ct = (r.headers.get('content-type')||'').toLowerCase();
+          let text = await r.text();
+          loading.style.display = 'none';
+          if (ct.includes('application/json')){
+            try { const obj = JSON.parse(text); text = JSON.stringify(obj, null, 2); } catch(e){}
+          }
+          resultBox.style.display = 'block';
+          resultBox.innerText = text && text.trim() ? text : 'Sin contenido';
+        } catch(err){
+          try {
+            iframe.style.display = 'block';
+            loading.style.display = 'flex';
+            iframe.src = url;
+            let done = false;
+            const onLoad = ()=>{ done = true; loading.style.display = 'none'; };
+            iframe.addEventListener('load', onLoad, { once:true });
+            setTimeout(()=>{
+              if (!done){
+                loading.style.display = 'none';
+                iframe.style.display = 'none';
+                resultBox.style.display = 'block';
+                resultBox.innerHTML = `<div class="error-box">No se pudo mostrar el resultado dentro del panel.<br><br>Posibles causas:<br>• Conexión rechazada (127.0.0.1)<br>• El servidor bloquea iframes (X-Frame-Options)<br>• CORS impide lectura desde el panel<br><br>Prueba abrir en nueva pestaña o revisa que el servicio de validación esté en ejecución.</div>`;
+              }
+            }, 2200);
+          } catch(e2){
+            loading.style.display = 'none';
+            resultBox.style.display = 'block';
+            resultBox.innerHTML = `<div class="error-box">No se pudo conectar: ${ (err && err.message) ? err.message : 'Error de red' }<br><br>Verifica que el servicio esté activo y accesible. Puedes intentar "Abrir en nueva pestaña".</div>`;
+          }
+        }
+      }
+      // Ocultar loader al cargar iframe
+      iframe.addEventListener('load', ()=>{ loading.style.display = 'none'; });
+    })();
+  </script>
+</body>
+</html>
