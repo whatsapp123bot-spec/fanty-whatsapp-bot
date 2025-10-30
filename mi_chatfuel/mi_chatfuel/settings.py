@@ -33,6 +33,16 @@ DEBUG = env('DEBUG')
 
 ALLOWED_HOSTS = env.list('ALLOWED_HOSTS', default=['*'])
 
+# CSRF / Proxy / Cookies seguras
+RENDER_EXTERNAL_URL = os.environ.get('RENDER_EXTERNAL_URL', '')
+_default_csrf = ['https://*.onrender.com']
+if RENDER_EXTERNAL_URL:
+    _default_csrf.append(RENDER_EXTERNAL_URL)
+CSRF_TRUSTED_ORIGINS = env.list('CSRF_TRUSTED_ORIGINS', default=_default_csrf)
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+CSRF_COOKIE_SECURE = env.bool('CSRF_COOKIE_SECURE', default=not DEBUG)
+SESSION_COOKIE_SECURE = env.bool('SESSION_COOKIE_SECURE', default=not DEBUG)
+
 
 # Application definition
 
