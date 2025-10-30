@@ -58,7 +58,7 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
 
-ROOT_URLCONF = 'mi_chatfuel.urls'
+ROOT_URLCONF = 'mi_chatfuel.mi_chatfuel.urls'
 
 TEMPLATES = [
     {
@@ -77,7 +77,7 @@ TEMPLATES = [
     },
 ]
 
-WSGI_APPLICATION = 'mi_chatfuel.wsgi.application'
+WSGI_APPLICATION = 'mi_chatfuel.mi_chatfuel.wsgi.application'
 
 
 # Database
