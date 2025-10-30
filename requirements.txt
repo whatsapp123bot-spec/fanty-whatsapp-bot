@@ -1,0 +1,6 @@
+-r mi_chatfuel/requirements.txt
+flask>=2.3,<4
+requests>=2.31
+gunicorn>=21
+cloudinary>=1.41
+psycopg2-binary>=2.9

@@ -94,38 +94,32 @@ whatsapp-bot/
 - El antiguo `app.py` (Flask) y sus templates fueron removidos.
 - Usa `mi_chatfuel/requirements.txt`. Si existe otro `requirements.txt` en raíz, ignóralo.
 - Para archivos subidos desde el Builder, se guardan según `MEDIA_ROOT`/`MEDIA_URL` (configura en settings si lo deseas).
-## Instalación (Windows PowerShell)
+## Despliegue en Render (Django)
+
+Con el archivo `render.yaml` incluido, Render detecta el blueprint automáticamente.
+
+Qué hace:
+- Instala dependencias de `mi_chatfuel/requirements.txt`.
+- Ejecuta migraciones: `python mi_chatfuel/manage.py migrate`.
+- Inicia Gunicorn con `mi_chatfuel.wsgi:application`.
+
+Variables de entorno recomendadas en Render:
+- `DJANGO_ALLOWED_HOSTS=*.onrender.com,localhost,127.0.0.1`
+- `DATABASE_URL` (Postgres de Render si usas DB persistente)
+- `CLOUDINARY_URL` (si activas cargas a Cloudinary)
+- `CLOUDINARY_STRICT=1` y `CLOUDINARY_MAX_MB=10` (opcional)
+- `VERIFY_TOKEN`, `WHATSAPP_TOKEN`, `PHONE_NUMBER_ID`
+- `AI_ENABLED=1`, `OPENROUTER_API_KEY`, `OPENROUTER_MODEL=openrouter/auto` (si usas IA)
+
+Flujo de publicación:
 
 ```powershell
-# 1) Crear y activar entorno
-python -m venv venv
-.\venv\Scripts\Activate.ps1
-
-# 2) Instalar dependencias
-python -m pip install -U pip
-python -m pip install -r requirements.txt
-
-# 3) Ejecutar el servidor
-python app.py
+git add -A
+git commit -m "deploy: Django on Render (gunicorn)"
+git push
 ```
 
-Abre en el navegador: http://127.0.0.1:5000
-
-- Desde el panel abre el Editor visual (🔧) con tu clave (`VERIFY_TOKEN`).
-- En el editor visual usa “👀 Vista previa” para abrir `/chat` y probar el flujo (escribe “hola/holi”).
-
-### (Opcional) Probar con tu WhatsApp real (no oficial)
-
-En `bridge/` hay un puente con WhatsApp Web.js para pruebas rápidas usando tu número:
-
-```powershell
-cd bridge
-npm install
-$env:FANTY_BASE = 'https://fanty-whatsapp-bot.onrender.com'  # o tu Flask local
-npm start
-```
-
-Escanea el QR y prueba escribiendo "hola" desde otro teléfono. El bot responde con tu flujo actual.
+Render hará el build y arrancará el servicio web automáticamente.
 
 ## Archivos y medios: Cloudinary (opcional)
 
@@ -181,37 +175,8 @@ Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
 python --version
 ```
 
-## Despliegue en Render (HTTPS público)
+## Notas finales
 
-1) Asegura estos archivos en el repo:
-   - `requirements.txt` (contiene: flask, requests, gunicorn)
-   - `runtime.txt` (por ejemplo: `python-3.11.5`)
-   - `render.yaml` (opcional, blueprint de Render)
-   - Carpetas `templates/` y `static/catalogos/`
-
-2) Sube el proyecto a GitHub (ejemplo):
-```powershell
-git init
-git add .
-git commit -m "Primer commit del bot Fanty"
-git branch -M main
-git remote add origin https://github.com/tu_usuario/fanty-whatsapp-bot.git
-git push -u origin main
-```
-
-3) En Render:
-   - Crea un nuevo Web Service desde tu repo
-   - Runtime: Python
-   - Build Command: `pip install -r requirements.txt`
-   - Start Command: `gunicorn app:app`
-   - (Si usas `render.yaml`, Render lo detectará y rellenará esto automáticamente.)
-
-4) Una vez desplegado, Render te dará una URL pública HTTPS. Úsala para:
-   - Probar el panel (`/`), el chat (`/chat`) y el editor visual (`/flow/builder?key=...`).
-   - Configurar el Webhook en WhatsApp Cloud API: `https://<tu-dominio-render>/webhook`.
-
-Notas:
-- En local usa `python app.py`. En Render, Gunicorn sirve la app con `app:app`.
-- La gestión de assets se realiza desde el editor visual y la API `/internal/upload`; ya no existe `/admin` ni `static/catalogos/`.
-- Si configuras `CLOUDINARY_URL`, el builder sube a Cloudinary y elimina al borrar/replace mediante `/internal/delete_asset`.
-- Con `DATABASE_URL`, los chats y cuentas persisten en Postgres (recomendado para Render). En local, SQLite sigue funcionando.
+- Usa `mi_chatfuel/requirements.txt` siempre. El antiguo `requirements.txt` de Flask fue eliminado.
+- El servidor antiguo `app.py` y los templates en la carpeta raíz también fueron eliminados.
+- Para pruebas locales, `python mi_chatfuel/manage.py runserver`.
