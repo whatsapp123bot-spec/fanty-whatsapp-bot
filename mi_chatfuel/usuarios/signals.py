@@ -21,5 +21,17 @@ def create_superuser_from_env(sender, **kwargs):
         return
 
     User = get_user_model()
-    if not User.objects.filter(username=username).exists():
-        User.objects.create_superuser(username=username, email=email, password=password)
+  user_qs = User.objects.filter(username=username)
+  if user_qs.exists():
+    user = user_qs.first()
+    updated = False
+    if password:
+      user.set_password(password)
+      updated = True
+    if email and user.email != email:
+      user.email = email
+      updated = True
+    if updated:
+      user.save()
+  else:
+    User.objects.create_superuser(username=username, email=email, password=password)
