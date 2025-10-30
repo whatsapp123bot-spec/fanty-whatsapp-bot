@@ -22,8 +22,6 @@ if __name__ == '__main__':
     port = os.environ.get('PORT', '8000')
     execute_from_command_line(['manage.py', 'runserver', f'0.0.0.0:{port}'])
 
-        return None
-
 def get_account_by_verify_token(vtok: str):
     try:
         row = db_execute("SELECT id,label,phone_number_id,whatsapp_token,verify_token,is_default FROM accounts WHERE verify_token=?", (vtok,), fetch='one')
@@ -196,25 +194,25 @@ def ensure_flow_node_column():
         # Intentar una lectura simple; si falla, crear columna
         try:
             db_execute("SELECT flow_node FROM users LIMIT 1", (), fetch='one')
-            return
-        except Exception:
-            pass
-        try:
-            if DB_IS_POSTGRES:
-                db_execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS flow_node TEXT")
-            else:
-                db_execute("ALTER TABLE users ADD COLUMN flow_node TEXT")
-        except Exception:
-            pass
-    except Exception:
-        pass
+            """
+            Compatibility entrypoint for Render.
+            - Exposes Django WSGI as `app` for `gunicorn app:app`.
+            - If executed with `python app.py`, runs Django dev server on $PORT.
+            """
+            import os
 
+            # Ensure Django settings
+            os.environ.setdefault("DJANGO_SETTINGS_MODULE", "mi_chatfuel.settings")
 
-def get_user_flow_node(wa_id: str) -> str | None:
-    """Lee users.flow_node, intentando migrar la columna si falta."""
-    try:
-        ensure_flow_node_column()
-        row = db_execute("SELECT flow_node FROM users WHERE wa_id=?", (wa_id,), fetch='one')
+            # WSGI for gunicorn
+            from mi_chatfuel.wsgi import application as app  # noqa: E402
+
+            if __name__ == "__main__":
+                import django  # noqa: E402
+                django.setup()
+                from django.core.management import execute_from_command_line  # noqa: E402
+                port = os.environ.get("PORT", "8000")
+                execute_from_command_line(["manage.py", "runserver", f"0.0.0.0:{port}"])
         if isinstance(row, dict):
             return (row.get('flow_node') or None)
         return (row[0] if row else None)
