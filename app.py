@@ -6,10 +6,10 @@ Compatibility entrypoint for Render.
 import os
 
 # Ensure Django settings
-os.environ.setdefault("DJANGO_SETTINGS_MODULE", "mi_chatfuel.settings")
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "mi_chatfuel.mi_chatfuel.settings")
 
 # WSGI for gunicorn
-from mi_chatfuel.wsgi import application as app  # noqa: E402
+from mi_chatfuel.mi_chatfuel.wsgi import application as app  # noqa: E402
 
 if __name__ == "__main__":
     import django  # noqa: E402
