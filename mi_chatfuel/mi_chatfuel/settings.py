@@ -44,8 +44,8 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'rest_framework',
-    'usuarios',
-    'bots',
+    'mi_chatfuel.usuarios.apps.UsuariosConfig',
+    'mi_chatfuel.bots.apps.BotsConfig',
 ]
 
 MIDDLEWARE = [
