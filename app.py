@@ -1,15 +1,26 @@
 """
-Compatibility WSGI entry for Render services still configured with `gunicorn app:app`.
-This is NOT Flask. It simply exposes the Django WSGI application as `app`.
+Compatibility entry for Render services configured with legacy commands.
+
+Provides both:
+- WSGI export `app` for `gunicorn app:app`
+- Executable mode for `python app.py` (runs Django dev server bound to $PORT)
 """
 
 import os
 
-# Ensure Django settings are set when Render starts gunicorn with app:app
+# Ensure Django settings
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'mi_chatfuel.settings')
 
-# Expose Django WSGI application as `app`
+# WSGI application for gunicorn
 from mi_chatfuel.wsgi import application as app
+
+if __name__ == '__main__':
+    # Fallback: allow `python app.py` to run the Django dev server on Render
+    import django
+    django.setup()
+    from django.core.management import execute_from_command_line
+    port = os.environ.get('PORT', '8000')
+    execute_from_command_line(['manage.py', 'runserver', f'0.0.0.0:{port}'])
 
         return None
 
