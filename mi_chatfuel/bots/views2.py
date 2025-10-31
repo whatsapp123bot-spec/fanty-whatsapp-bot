@@ -792,7 +792,19 @@ def whatsapp_webhook(request, bot_uuid):
 
             # Respuesta IA general sólo si NO humano y NO flujo activo
             if not user.human_requested:
-                answer = ai_answer(raw_text, brand='OptiChat')
+                # Construir persona/"cerebro" desde el flujo
+                ai_cfg = (flow_cfg or {}).get('ai') or {}
+                # Back-compat: soportar posibles claves usadas en el builder
+                persona = {
+                    'name': ai_cfg.get('name') or ai_cfg.get('assistant_name') or 'Asistente',
+                    'about': ai_cfg.get('about') or ai_cfg.get('presentation') or '',
+                    'knowledge': ai_cfg.get('knowledge') or ai_cfg.get('brain') or ai_cfg.get('kb') or '',
+                    'style': ai_cfg.get('style') or '',
+                    'system': ai_cfg.get('system') or ai_cfg.get('instructions') or '',
+                }
+                # Permitir override de marca en flujo si existe
+                brand = (flow_cfg or {}).get('brand') or 'OptiChat'
+                answer = ai_answer(raw_text, brand=brand, persona=persona)
                 if answer:
                     try:
                         send_whatsapp_text(bot, wa_from, answer)

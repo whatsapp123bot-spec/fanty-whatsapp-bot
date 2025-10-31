@@ -79,16 +79,46 @@ def ai_select_trigger(user_text: str, candidates: list[dict]) -> str | None:
         return None
 
 
-def ai_answer(user_text: str, brand: str = 'OptiChat') -> str | None:
-    """Devuelve una respuesta breve de IA para dudas generales."""
-    sys = {
-        'role': 'system',
-        'content': (
-            f"Eres un asistente útil y conciso de {brand}. Responde con 1-3 frases claras y útiles."
-        )
+def ai_answer(
+    user_text: str,
+    brand: str = 'OptiChat',
+    persona: dict | None = None,
+    temperature: float = 0.4,
+    max_tokens: int = 220,
+) -> str | None:
+    """Devuelve una respuesta breve de IA para dudas generales, con persona/"cerebro" opcional.
+
+    persona: {
+      'name': str,
+      'about': str,        # presentación del asistente/empresa
+      'knowledge': str,    # base de conocimiento (FAQ, productos, políticas)
+      'style': str,        # tono deseado
+      'system': str,       # instrucciones adicionales
     }
+    """
+    p = persona or {}
+    name = (p.get('name') or '').strip() or 'Asistente'
+    about = (p.get('about') or p.get('presentation') or '').strip()
+    knowledge = (p.get('knowledge') or p.get('brain') or '').strip()
+    style = (p.get('style') or 'cálido, directo, profesional').strip()
+    sys_extra = (p.get('system') or '').strip()
+
+    rules = [
+        f"Te llamas {name}. Perteneces a {brand}.",
+        "No digas que eres un modelo de lenguaje o una IA; preséntate como un asistente del negocio.",
+        "Usa la base de conocimiento provista; si falta información, pide un dato concreto y sugiere alternativas.",
+        "Responde en 1-3 frases. Enlaza pasos claros cuando sea útil.",
+    ]
+    if about:
+        rules.append(f"Presentación: {about}")
+    if knowledge:
+        rules.append(f"Base de conocimiento:\n{knowledge}")
+    if sys_extra:
+        rules.append(sys_extra)
+
+    sys = { 'role': 'system', 'content': "\n".join(rules) }
     user = { 'role': 'user', 'content': user_text }
-    data = ai_chat([sys, user], temperature=0.4, max_tokens=200)
+    data = ai_chat([sys, user], temperature=temperature, max_tokens=max_tokens)
     if not data:
         return None
     try:
