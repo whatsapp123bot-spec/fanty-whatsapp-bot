@@ -34,13 +34,18 @@
     .chip{font-size:11px;padding:2px 8px;border-radius:999px;border:1px solid rgba(255,255,255,.12)}
     .chip.on{background:rgba(34,197,94,.12);border-color:rgba(34,197,94,.35);color:#bbf7d0}
     .chip.off{background:rgba(148,163,184,.12);color:#cbd5e1}
-  .msgs{padding:14px;overflow:auto;display:flex;flex-direction:column;gap:10px;background:radial-gradient(900px 360px at 0% 100%, rgba(30,64,175,.08), transparent 60%)}
+  .msgs{padding:14px;overflow:auto;display:flex;flex-direction:column;gap:12px;background:#f8fafc}
   .msg-wrap{display:flex;flex-direction:column;max-width:70%}
-  .msg-wrap.in{align-self:flex-start}
-  .msg-wrap.out{align-self:flex-end}
+  /* Estilo WhatsApp: cliente (in) a la derecha en verde; bot (out) a la izquierda en gris */
+  .msg-wrap.in{align-self:flex-end}
+  .msg-wrap.out{align-self:flex-start}
   .msg{padding:10px 12px;border-radius:14px;font-size:14px}
-  .msg.in{background:#0e1726;border:1px solid rgba(255,255,255,.06)}
-  .msg.out{background:#1f2937;border:1px solid rgba(124,58,237,.35);box-shadow:0 4px 10px rgba(124,58,237,.18)}
+  .msg.in{background:#d1fae5;border:1px solid rgba(34,197,94,.35);color:#065f46;box-shadow:0 4px 10px rgba(34,197,94,.12)}
+  .msg.out{background:#f3f4f6;border:1px solid rgba(0,0,0,.06);color:#111827;box-shadow:0 4px 10px rgba(15,23,42,.08)}
+  /* Píldoras de opciones bajo mensajes del bot */
+  .options{display:flex;flex-direction:column;gap:8px;margin-top:6px}
+  .option-pill{display:block;width:100%;text-align:left;padding:12px 14px;border-radius:14px;background:#ffffff;color:#111827;border:1px solid #e5e7eb;box-shadow:0 2px 8px rgba(2,6,23,.06);font-weight:600}
+  .option-pill:hover{filter:brightness(0.98)}
     .composer{padding:10px;border-top:1px solid rgba(255,255,255,.06);display:flex;gap:8px}
     .composer input{flex:1;padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,.12);background:#0a0f1a;color:#e5e7eb}
     .btn{appearance:none;border:0;border-radius:10px;padding:10px 14px;background:linear-gradient(135deg,#8b5cf6,#7c3aed);color:#fff;font-weight:700;cursor:pointer;transition:filter .15s ease, transform .1s ease}
@@ -132,10 +137,9 @@
         wrap.appendChild(dv);
         // Si el mensaje saliente tenía botones, muéstralos como pills debajo
         if (m.direction==='out' && Array.isArray(m.options) && m.options.length){
-          const pills = document.createElement('div'); pills.style.margin = '4px 0 0';
+          const pills = document.createElement('div'); pills.className='options';
           m.options.forEach(t=>{
-            const s = document.createElement('span');
-            s.textContent = t; s.style.display='inline-block'; s.style.margin='4px 6px 0 0'; s.style.padding='4px 10px'; s.style.borderRadius='999px'; s.style.fontSize='12px'; s.style.border='1px solid rgba(255,255,255,.18)'; s.style.color='#cbd5e1'; s.style.background='#0e1726';
+            const s = document.createElement('div'); s.className='option-pill'; s.textContent = t;
             pills.appendChild(s);
           });
           wrap.appendChild(pills);
