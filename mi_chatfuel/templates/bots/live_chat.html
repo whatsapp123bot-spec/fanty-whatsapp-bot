@@ -42,12 +42,19 @@
   .msg{padding:8px 12px;border-radius:10px;font-size:14px}
   /* Cliente: gris a la izquierda */
   .msg.in{background:#f3f4f6;border:1px solid rgba(0,0,0,.06);color:#111827;box-shadow:0 4px 10px rgba(15,23,42,.08)}
-  /* Bot: verde a la derecha (más marcado) */
-  .msg.out{background:#bbf7d0;border:1px solid rgba(34,197,94,.55);color:#111827;box-shadow:0 4px 10px rgba(34,197,94,.14)}
+  /* Bot: verde a la derecha (tono suave) */
+  .msg.out{background:#d1fae5;border:1px solid rgba(34,197,94,.35);color:#111827;box-shadow:0 4px 10px rgba(34,197,94,.12)}
   /* Píldoras de opciones bajo mensajes del bot */
   .options{display:flex;flex-direction:column;gap:6px;margin-top:6px}
-  .option-pill{display:block;width:100%;text-align:left;padding:10px 12px;border-radius:10px;background:#ffffff;color:#111827;border:1px solid #e5e7eb;box-shadow:0 2px 8px rgba(2,6,23,.06);font-weight:400;font-size:14px}
+  .option-pill{display:block;width:100%;text-align:left;padding:10px 12px;border-radius:10px;background:#d1fae5;color:#111827;border:1px solid rgba(34,197,94,.35);box-shadow:0 2px 8px rgba(34,197,94,.12);font-weight:400;font-size:14px}
   .option-pill:hover{filter:brightness(0.98)}
+  /* Hora de los mensajes */
+  .time{font-size:12px;color:#64748b;margin-top:4px}
+  .msg-wrap.in .time{text-align:left}
+  .msg-wrap.out .time{text-align:right}
+  /* Deshabilitado */
+  .composer input:disabled{opacity:.6;cursor:not-allowed}
+  .composer .btn:disabled{opacity:.6;cursor:not-allowed}
     .composer{padding:10px;border-top:1px solid rgba(255,255,255,.06);display:flex;gap:8px}
     .composer input{flex:1;padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,.12);background:#0a0f1a;color:#e5e7eb}
     .btn{appearance:none;border:0;border-radius:10px;padding:10px 14px;background:linear-gradient(135deg,#8b5cf6,#7c3aed);color:#fff;font-weight:700;cursor:pointer;transition:filter .15s ease, transform .1s ease}
@@ -89,7 +96,7 @@
       <div id="msgs" class="msgs"></div>
       <div class="composer">
         <input id="text" placeholder="Escribe un mensaje..." onkeydown="if(event.key==='Enter') send()"/>
-        <button class="btn" onclick="send()">Enviar</button>
+        <button id="sendBtn" class="btn" onclick="send()">Enviar</button>
       </div>
     </section>
   </div>
@@ -105,6 +112,13 @@
     })();
     function getCookie(name){
       const v = `; ${document.cookie}`; const p = v.split(`; ${name}=`); if (p.length===2) return p.pop().split(';').shift();
+    }
+    function formatTime(iso){ try { const d = new Date(iso); return d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}); } catch(e){ return ''; } }
+    function updateComposerEnabled(){
+      const tx = document.getElementById('text'); const btn = document.getElementById('sendBtn');
+      const enabled = !!(current && current.human_requested);
+      tx.disabled = !enabled; btn.disabled = !enabled;
+      tx.placeholder = enabled ? 'Escribe un mensaje...' : 'Activa el chat humano para escribir';
     }
     async function loadConvs(){
       onlyLive = document.getElementById('onlyLive').checked;
@@ -127,8 +141,9 @@
     }
     async function openConv(i){
       current = i; document.getElementById('convName').textContent = i.name||i.wa_id; document.getElementById('convId').textContent = `${i.wa_id} • ${i.bot_name}`;
-      document.getElementById('chipLive').className = 'chip ' + (i.human_requested?'on':'off');
-      document.getElementById('chipLive').textContent = 'Humano: ' + (i.human_requested?'activo':'inactivo');
+  document.getElementById('chipLive').className = 'chip ' + (i.human_requested?'on':'off');
+  document.getElementById('chipLive').textContent = 'Humano: ' + (i.human_requested?'activo':'inactivo');
+  updateComposerEnabled();
   const r = await fetch(`/panel/api/conversations/${encodeURIComponent(i.wa_id)}/${BOT_ID?`?bot=${encodeURIComponent(BOT_ID)}`:''}`);
       const j = await r.json();
       const host = document.getElementById('msgs'); host.innerHTML='';
@@ -137,6 +152,7 @@
         const dv = document.createElement('div'); dv.className = 'msg ' + (m.direction==='in'?'in':'out');
         dv.textContent = (m.body && String(m.body).trim()) || `[${m.type}]`;
         wrap.appendChild(dv);
+        const tm = document.createElement('div'); tm.className = 'time'; tm.textContent = formatTime(m.created_at); wrap.appendChild(tm);
         // Si el mensaje saliente tenía botones, muéstralos como pills debajo
         if (m.direction==='out' && Array.isArray(m.options) && m.options.length){
           const pills = document.createElement('div'); pills.className='options';
@@ -170,6 +186,7 @@
       // Refresh list and header chip
       loadConvs(); if (current){ current.human_requested = on; openConv(current); }
     }
+    updateComposerEnabled();
     loadConvs(); setInterval(loadConvs, 15000);
   </script>
 </body>
