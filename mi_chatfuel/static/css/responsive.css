@@ -41,8 +41,12 @@
 
   /* ===== Builder (flow_builder.html) ===== */
   .wrap { grid-template-columns: 1fr !important; gap: 8px !important; height: auto !important; }
-  .sidebar { display: none !important; }
+  /* Mantener el sidebar visible en móvil (apilado arriba del lienzo) */
+  .sidebar { display: block !important; position: sticky; top: 54px; z-index: 5; }
   .canvas { min-height: 70vh; }
+  /* Mejorar scroll horizontal del lienzo en pantallas pequeñas */
+  .canvas { overflow: auto !important; }
+  .stage { min-width: 860px; }
   header .actions { overflow-x: auto; max-width: 60%; }
 
   /* ===== Chat preview (chat.html) ===== */
