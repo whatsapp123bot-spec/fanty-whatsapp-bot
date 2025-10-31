@@ -88,13 +88,19 @@ def ai_answer(
 ) -> str | None:
     """Devuelve una respuesta breve de IA para dudas generales, con persona/"cerebro" opcional.
 
-    persona: {
-      'name': str,
-      'about': str,        # presentación del asistente/empresa
-      'knowledge': str,    # base de conocimiento (FAQ, productos, políticas)
-      'style': str,        # tono deseado
-      'system': str,       # instrucciones adicionales
-    }
+        persona: {
+            'name': str,
+            'about': str,          # presentación del asistente/empresa
+            'knowledge': str,      # base de conocimiento (FAQ, productos, políticas)
+            'style': str,          # tono deseado
+            'system': str,         # instrucciones adicionales
+            'language': str,       # ej. "español"
+            'website': str,        # URL oficial
+            'phone': str,          # teléfono de contacto
+            'email': str,          # correo de contacto
+            'order_required': str, # campos requeridos de pedido (una por línea)
+            'out_of_scope': str,   # temas fuera de alcance (una por línea)
+        }
     """
     p = persona or {}
     name = (p.get('name') or '').strip() or 'Asistente'
@@ -102,17 +108,42 @@ def ai_answer(
     knowledge = (p.get('knowledge') or p.get('brain') or '').strip()
     style = (p.get('style') or 'cálido, directo, profesional').strip()
     sys_extra = (p.get('system') or '').strip()
+    language = (p.get('language') or '').strip() or 'español'
+    website = (p.get('website') or p.get('site') or p.get('url') or '').strip()
+    phone = (p.get('phone') or p.get('telefono') or '').strip()
+    email = (p.get('email') or p.get('correo') or '').strip()
+    order_required = (p.get('order_required') or p.get('required_info') or p.get('required_fields') or '').strip()
+    out_of_scope = (p.get('out_of_scope') or p.get('oos') or p.get('temas_fuera') or '').strip()
 
     rules = [
         f"Te llamas {name}. Perteneces a {brand}.",
+        f"Responde SIEMPRE en {language}.",
         "No digas que eres un modelo de lenguaje o una IA; preséntate como un asistente del negocio.",
         "Usa la base de conocimiento provista; si falta información, pide un dato concreto y sugiere alternativas.",
         "Responde en 1-3 frases. Enlaza pasos claros cuando sea útil.",
+        f"Tono: {style}",
     ]
     if about:
         rules.append(f"Presentación: {about}")
     if knowledge:
         rules.append(f"Base de conocimiento:\n{knowledge}")
+    contact_lines = []
+    if website:
+        contact_lines.append(f"Web: {website}")
+    if phone:
+        contact_lines.append(f"Teléfono: {phone}")
+    if email:
+        contact_lines.append(f"Email: {email}")
+    if contact_lines:
+        rules.append("Datos de contacto: " + " | ".join(contact_lines))
+    if order_required:
+        rules.append(
+            "Si el usuario quiere hacer un pedido, solicita de forma amable y ordenada estos datos (uno por línea) y confirma:\n" + order_required
+        )
+    if out_of_scope:
+        rules.append(
+            "Si preguntan sobre temas fuera de alcance, responde brevemente que no gestionas ese tema y ofrece alternativas/derivación: \n" + out_of_scope
+        )
     if sys_extra:
         rules.append(sys_extra)
 

@@ -801,6 +801,12 @@ def whatsapp_webhook(request, bot_uuid):
                     'knowledge': ai_cfg.get('knowledge') or ai_cfg.get('brain') or ai_cfg.get('kb') or '',
                     'style': ai_cfg.get('style') or '',
                     'system': ai_cfg.get('system') or ai_cfg.get('instructions') or '',
+                    'language': ai_cfg.get('language') or ai_cfg.get('lang') or 'español',
+                    'website': ai_cfg.get('website') or ai_cfg.get('site') or ai_cfg.get('url') or '',
+                    'phone': ai_cfg.get('phone') or ai_cfg.get('telefono') or '',
+                    'email': ai_cfg.get('email') or ai_cfg.get('correo') or '',
+                    'order_required': ai_cfg.get('order_required') or ai_cfg.get('required_info') or ai_cfg.get('required_fields') or '',
+                    'out_of_scope': ai_cfg.get('out_of_scope') or ai_cfg.get('oos') or ai_cfg.get('temas_fuera') or '',
                 }
                 # Permitir override de marca en flujo si existe
                 brand = (flow_cfg or {}).get('brand') or 'OptiChat'
