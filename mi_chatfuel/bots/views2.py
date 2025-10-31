@@ -256,8 +256,9 @@ def api_panel_send_message(request):
                 data_bytes = up_file.read()
                 media_url = f"https://graph.facebook.com/{settings.WA_GRAPH_VERSION}/{u.bot.phone_number_id}/media"
                 headers = { 'Authorization': f'Bearer {u.bot.access_token}' }
-                files = { 'file': (up_file.name, data_bytes) }
-                form = { 'messaging_product': 'whatsapp' }
+                # Incluir content-type explícito (recomendado por Meta) para documentos
+                files = { 'file': (up_file.name, data_bytes, ctype or 'application/octet-stream') }
+                form = { 'messaging_product': 'whatsapp', 'type': ctype or 'application/octet-stream' }
                 media_resp = requests.post(media_url, headers=headers, data=form, files=files, timeout=60)
                 media_resp.raise_for_status()
                 media_id = media_resp.json().get('id')
