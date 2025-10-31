@@ -739,6 +739,36 @@ def whatsapp_webhook(request, bot_uuid):
         nodes = (flow_cfg or {}).get('nodes') or {}
         enabled = (flow_cfg or {}).get('enabled', True)
 
+        # Saludo inicial (primer contacto) — no interfiere con flujos ni humano
+        try:
+            is_first_contact = not MessageLog.objects.filter(
+                bot=bot,
+                direction=MessageLog.OUT,
+                wa_to=wa_from,
+            ).exists()
+        except Exception:
+            is_first_contact = False
+        if is_first_contact and not user.human_requested and not user.flow_node and raw_text:
+            ai_cfg_wc = (flow_cfg or {}).get('ai') or {}
+            brand_wc = (
+                (flow_cfg or {}).get('brand')
+                or ai_cfg_wc.get('trade_name')
+                or ai_cfg_wc.get('nombre_comercial')
+                or ai_cfg_wc.get('legal_name')
+                or bot.name
+            )
+            assistant_name = (ai_cfg_wc.get('assistant_name') or ai_cfg_wc.get('name') or (brand_wc and f"{brand_wc} Asistente") or 'Asistente').strip()
+            welcome_message = (
+                ai_cfg_wc.get('welcome_message')
+                or ai_cfg_wc.get('welcome')
+                or ai_cfg_wc.get('greeting')
+                or f"Hola, soy {assistant_name}, tu asistente de ventas. ¿Qué te gustaría ver hoy?"
+            ).strip()
+            try:
+                send_whatsapp_text(bot, wa_from, welcome_message)
+            except Exception:
+                pass
+
         # Comando: Cerrar flujo (si hay flujo activo)
         def _norm_close(s: str) -> bool:
             return s.replace('á','a').replace('é','e').replace('í','i').replace('ó','o').replace('ú','u').strip() == 'cerrar flujo'

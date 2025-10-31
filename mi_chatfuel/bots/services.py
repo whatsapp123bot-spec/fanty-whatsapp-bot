@@ -65,6 +65,23 @@ def answer_from_persona(user_text: str, persona: dict | None, brand: str | None 
     biz = (p.get('trade_name') or p.get('legal_name') or (brand or '')).strip()
     asist = (p.get('name') or 'Asistente').strip()
 
+    # Despedidas / cierre amable con redes
+    if any(kw in t for kw in ['gracias', 'muchas gracias', 'graci', 'adios', 'adiós', 'chao', 'hasta luego', 'nos vemos', 'bye']):
+        redes = []
+        if p.get('instagram'):
+            redes.append(f"Instagram: {p.get('instagram')}")
+        if p.get('facebook'):
+            redes.append(f"Facebook: {p.get('facebook')}")
+        if p.get('tiktok'):
+            redes.append(f"TikTok: {p.get('tiktok')}")
+        if p.get('youtube'):
+            redes.append(f"YouTube: {p.get('youtube')}")
+        if p.get('x'):
+            redes.append(f"X: {p.get('x')}")
+        if redes:
+            return "¡Gracias por escribir! Puedes seguirnos: " + " | ".join(redes)
+        return "¡Gracias! Si necesitas algo más, estaré atento."
+
     # Saludo/Identidad
     if any(kw in t for kw in ['quien eres', 'quien sos', 'quien me habla', 'tu nombre', 'como te llamas', 'quien es este']):
         if biz:
