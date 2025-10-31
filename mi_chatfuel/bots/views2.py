@@ -1079,8 +1079,11 @@ def whatsapp_webhook(request, bot_uuid):
         if enabled and nodes:
             if user.flow_node:
                 if _norm_close(text_low):
+                    # Cerrar el flujo y desactivar modo humano para reactivar IA
                     user.flow_node = None
-                    user.save(update_fields=['flow_node'])
+                    user.human_requested = False
+                    user.human_expires_at = None
+                    user.save(update_fields=['flow_node', 'human_requested', 'human_expires_at'])
                     try:
                         send_whatsapp_text(bot, wa_from, '✅ Flujo cerrado. Puedes escribir otra cosa cuando quieras.')
                     except Exception:
@@ -1335,6 +1338,120 @@ def whatsapp_webhook(request, bot_uuid):
                 except Exception:
                     pass
                 return JsonResponse({'status': 'ok'})
+
+        # Fallback: aunque el flujo esté deshabilitado o sin nodos, permitir IA si no está activado el modo humano
+        if not user.human_requested and raw_text:
+            ai_cfg = _flatten_ai_cfg(flow_cfg)
+            _assistant_name = (
+                ai_cfg.get('assistant_name')
+                or ai_cfg.get('assistant')
+                or ai_cfg.get('assistantName')
+                or ai_cfg.get('nombre_asistente')
+                or ai_cfg.get('name')
+                or 'Asistente'
+            )
+            persona = {
+                'name': _assistant_name,
+                'about': ai_cfg.get('about') or ai_cfg.get('presentation') or '',
+                'knowledge': ai_cfg.get('knowledge') or ai_cfg.get('brain') or ai_cfg.get('kb') or '',
+                'style': ai_cfg.get('style') or '',
+                'system': ai_cfg.get('system') or ai_cfg.get('instructions') or '',
+                'language': ai_cfg.get('language') or ai_cfg.get('lang') or 'español',
+                'website': ai_cfg.get('website') or ai_cfg.get('website_url') or ai_cfg.get('site') or ai_cfg.get('url') or '',
+                'phone': ai_cfg.get('phone') or ai_cfg.get('phone_number') or ai_cfg.get('telefono') or '',
+                'email': ai_cfg.get('email') or ai_cfg.get('correo') or '',
+                'order_required': ai_cfg.get('order_required') or ai_cfg.get('required_info') or ai_cfg.get('required_fields') or '',
+                'out_of_scope': ai_cfg.get('out_of_scope') or ai_cfg.get('oos') or ai_cfg.get('temas_fuera') or '',
+                'response_policies': ai_cfg.get('response_policies') or ai_cfg.get('pol_resp') or '',
+                'comm_policies': ai_cfg.get('comm_policies') or ai_cfg.get('pol_comm') or '',
+                # Perfil del negocio
+                'trade_name': ai_cfg.get('trade_name') or ai_cfg.get('nombre_comercial') or '',
+                'legal_name': ai_cfg.get('legal_name') or ai_cfg.get('razon_social') or '',
+                'ruc': ai_cfg.get('ruc') or '',
+                'timezone': ai_cfg.get('timezone') or ai_cfg.get('zona_horaria') or '',
+                'address': ai_cfg.get('address') or ai_cfg.get('direccion') or '',
+                'city': ai_cfg.get('city') or ai_cfg.get('ciudad') or '',
+                'region': ai_cfg.get('region') or ai_cfg.get('departamento') or '',
+                'country': ai_cfg.get('country') or ai_cfg.get('pais') or '',
+                'maps_url': ai_cfg.get('maps_url') or ai_cfg.get('google_maps') or '',
+                'ubigeo': ai_cfg.get('ubigeo') or '',
+                'hours_mon_fri': ai_cfg.get('hours_mon_fri') or ai_cfg.get('horario_lv') or '',
+                'hours_sat': ai_cfg.get('hours_sat') or ai_cfg.get('horario_sab') or '',
+                'hours_sun': ai_cfg.get('hours_sun') or ai_cfg.get('horario_dom') or '',
+                # Redes y enlaces
+                'instagram': ai_cfg.get('instagram') or '',
+                'facebook': ai_cfg.get('facebook') or '',
+                'tiktok': ai_cfg.get('tiktok') or '',
+                'youtube': ai_cfg.get('youtube') or '',
+                'x': ai_cfg.get('x') or ai_cfg.get('twitter') or '',
+                'linktree': ai_cfg.get('linktree') or '',
+                'whatsapp_link': ai_cfg.get('whatsapp_link') or '',
+                'catalog_url': ai_cfg.get('catalog_url') or ai_cfg.get('site_shop') or '',
+                # Modalidad de venta
+                'retail_yes': ai_cfg.get('retail_yes') or '',
+                'wholesale_yes': ai_cfg.get('wholesale_yes') or '',
+                'wholesale_min_qty': ai_cfg.get('wholesale_min_qty') or '',
+                'wholesale_price_list_url': ai_cfg.get('wholesale_price_list_url') or '',
+                'wholesale_requires_ruc': ai_cfg.get('wholesale_requires_ruc') or '',
+                'prep_time_large_orders': ai_cfg.get('prep_time_large_orders') or '',
+                'volume_discounts': ai_cfg.get('volume_discounts') or '',
+                # Pagos
+                'yape_number': ai_cfg.get('yape_number') or '',
+                'yape_holder': ai_cfg.get('yape_holder') or '',
+                'yape_alias': ai_cfg.get('yape_alias') or '',
+                'yape_qr': ai_cfg.get('yape_qr') or '',
+                'plin_number': ai_cfg.get('plin_number') or '',
+                'plin_holder': ai_cfg.get('plin_holder') or '',
+                'plin_qr': ai_cfg.get('plin_qr') or '',
+                'card_brands': ai_cfg.get('card_brands') or '',
+                'card_provider': ai_cfg.get('card_provider') or '',
+                'card_paylink': ai_cfg.get('card_paylink') or '',
+                'card_fee_notes': ai_cfg.get('card_fee_notes') or '',
+                'transfer_accounts': ai_cfg.get('transfer_accounts') or '',
+                'transfer_instructions': ai_cfg.get('transfer_instructions') or '',
+                'cash_on_delivery_yes': ai_cfg.get('cash_on_delivery_yes') or '',
+                # Envíos
+                'districts_costs': ai_cfg.get('districts_costs') or '',
+                'typical_delivery_time': ai_cfg.get('typical_delivery_time') or '',
+                'free_shipping_from': ai_cfg.get('free_shipping_from') or '',
+                'pickup_address': ai_cfg.get('pickup_address') or '',
+                'delivery_partners': ai_cfg.get('delivery_partners') or '',
+                # Políticas y comprobantes
+                'returns_policy': ai_cfg.get('returns_policy') or '',
+                'warranty': ai_cfg.get('warranty') or '',
+                'terms_url': ai_cfg.get('terms_url') or '',
+                'privacy_url': ai_cfg.get('privacy_url') or '',
+                'boleta_yes': ai_cfg.get('boleta_yes') or '',
+                'factura_yes': ai_cfg.get('factura_yes') or '',
+            }
+
+            # Intento determinista
+            quick = answer_from_persona(raw_text, persona, brand=((flow_cfg or {}).get('brand') or persona.get('trade_name') or persona.get('legal_name') or None))
+            if quick:
+                try:
+                    send_whatsapp_text(bot, wa_from, quick)
+                except Exception:
+                    pass
+                return JsonResponse({'status': 'ok'})
+
+            # Segundo: uso IA generativa si hay clave disponible
+            brand = (
+                (flow_cfg or {}).get('brand')
+                or persona.get('trade_name')
+                or persona.get('legal_name')
+                or None
+            )
+            answer = ai_answer(raw_text, brand=brand, persona=persona)
+            if not answer:
+                name = persona.get('name') or 'Asistente'
+                order_lines = [ln.strip() for ln in (persona.get('order_required') or '').split('\n') if ln.strip()]
+                pedido_hint = ("\nSi deseas hacer un pedido, por favor comparte: " + ", ".join(order_lines[:5])) if order_lines else ''
+                answer = f"Disculpa, no te entendí bien. ¿Podrías reformular o darme un poco más de detalle?{pedido_hint}"
+            try:
+                send_whatsapp_text(bot, wa_from, answer)
+            except Exception:
+                pass
+            return JsonResponse({'status': 'ok'})
 
         # No activar flujo si no hay trigger; no responder
         return JsonResponse({'status': 'ok'})
