@@ -204,9 +204,9 @@ def answer_from_persona(user_text: str, persona: dict | None) -> str | None:
     # Envíos / cobertura / tiempos
     if any(kw in t for kw in ['envio', 'envío', 'envios', 'delivery', 'reparto', 'cobertura', 'distritos']):
         msgs = []
-        if p.get('districts_costs'):
-            msgs.append('Distritos y costos:
 ' + p.get('districts_costs'))
+        if p.get('districts_costs'):
+            msgs.append('Distritos y costos:\n' + p.get('districts_costs'))
         if p.get('typical_delivery_time'):
             msgs.append(f"Tiempo típico: {p.get('typical_delivery_time')}")
         if p.get('free_shipping_from'):
