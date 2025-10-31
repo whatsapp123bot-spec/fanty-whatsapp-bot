@@ -1,30 +1,114 @@
-<!DOCTYPE html>
+{% load static %}
+<!doctype html>
 <html lang="es">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Iniciar sesión</title>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Inicia sesión • OptiChat</title>
   <style>
-    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; padding: 2rem; }
-    .card { max-width: 420px; margin: 0 auto; border: 1px solid #ddd; border-radius: 8px; padding: 1.25rem; }
-    label { display: block; margin-top: .75rem; font-weight: 600; }
-    input { width: 100%; padding: .5rem; margin-top: .25rem; }
-    button { margin-top: 1rem; padding: .6rem 1rem; }
-    .errorlist { color: #b00020; }
+    :root{
+      --bg:#0f172a;          /* slate-900 */
+      --card:#111827;        /* gray-900 */
+      --muted:#94a3b8;       /* slate-400 */
+      --text:#e5e7eb;        /* gray-200 */
+      --primary:#22c55e;     /* green-500 */
+      --primary-700:#15803d; /* green-700 */
+      --danger:#ef4444;      /* red-500 */
+      --ring:#22c55e44;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0; min-height:100vh; display:grid; place-items:center;
+      background: radial-gradient(60rem 60rem at 10% -10%, #1f2937 0%, transparent 40%),
+                  radial-gradient(60rem 60rem at 110% 110%, #0b3a1f 0%, transparent 40%),
+                  var(--bg);
+      color:var(--text); font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Helvetica Neue, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+    }
+    .card{
+      width:min(92vw, 380px); background:linear-gradient(180deg, #0b1220, #0a0f1a);
+      border:1px solid #1f2937; border-radius:16px; padding:28px; box-shadow:0 10px 30px #00000055;
+    }
+    .brand{display:flex; align-items:center; gap:12px; margin-bottom:6px}
+    .logo{
+      width:38px; height:38px; border-radius:10px; display:grid; place-items:center; font-weight:700;
+      background:linear-gradient(135deg, var(--primary), #10b981); color:#052e16;
+      box-shadow:0 6px 18px #22c55e55;
+    }
+    h1{margin:0; font-size:1.15rem}
+    p.helper{margin:.25rem 0 1.25rem; color:var(--muted); font-size:.92rem}
+    form{display:grid; gap:14px}
+    label{font-size:.9rem; color:#cbd5e1}
+    input[type="text"], input[type="password"]{
+      width:100%; padding:12px 14px; border-radius:10px; border:1px solid #233046; background:#0b1220; color:var(--text);
+      outline:none; transition:border-color .15s, box-shadow .15s;
+    }
+    input[type="text"]:focus, input[type="password"]:focus{border-color:var(--primary); box-shadow:0 0 0 4px var(--ring)}
+    .actions{margin-top:4px; display:flex; align-items:center; justify-content:space-between; gap:10px}
+    button[type="submit"]{
+      appearance:none; border:0; padding:11px 14px; border-radius:10px; cursor:pointer; font-weight:600;
+      background:linear-gradient(135deg, var(--primary), #10b981); color:#052e16;
+      box-shadow:0 8px 22px #22c55e44; transition:transform .06s ease, box-shadow .2s ease;
+    }
+    button[type="submit"]:hover{transform:translateY(-1px); box-shadow:0 12px 26px #22c55e55}
+    .alt-links{margin-top:10px; text-align:center; font-size:.9rem; color:var(--muted)}
+    .alt-links a{color:#86efac; text-decoration:none}
+    .alt-links a:hover{text-decoration:underline}
+    .error{border:1px solid #7f1d1d; background:#1b0b0b; color:#fecaca; padding:10px 12px; border-radius:10px; font-size:.9rem}
+    .footer{margin-top:18px; text-align:center; color:#64748b; font-size:.8rem}
   </style>
+  <meta name="color-scheme" content="dark light">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop stop-color='%2322c55e'/%3E%3Cstop offset='1' stop-color='%2310b981'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='64' height='64' rx='14' fill='url(%23g)'/%3E%3Ctext x='50%' y='56%' text-anchor='middle' font-size='34' font-family='Segoe UI, Roboto' font-weight='700' fill='%23052e16'%3EO%3C/text%3E%3C/svg%3E"/>
+  <meta name="robots" content="noindex">
+  <meta http-equiv="Cache-Control" content="no-store" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
+  {% if form.errors %}<meta http-equiv="refresh" content="3600">{% endif %}
+  {% if next %}<meta name="x-next" content="{{ next|escape }}">{% endif %}
+  {% if request and request.user.is_authenticated %}<meta http-equiv="refresh" content="0; url=/" />{% endif %}
+  <script>try{if(self!==top){top.location=self.location}}catch(e){}</script>
+  <style>@media (prefers-reduced-motion: reduce){button[type="submit"]{transition:none}}</style>
+  <!-- Inline CSS para simplificar despliegue en Render sin colecta de estáticos -->
+  <!-- No mostramos "Volver al inicio" aquí porque esta vista ya ES el inicio para usuarios no autenticados -->
 </head>
 <body>
-  <div class="card">
-    <h1>Iniciar sesión</h1>
+  <main class="card" aria-label="Formulario de acceso">
+    <div class="brand">
+  <div class="logo" aria-hidden="true">O</div>
+  <h1>OptiChat • Acceso</h1>
+    </div>
+    <p class="helper">Inicia sesión para entrar al panel de tu bot de WhatsApp.</p>
+
     {% if form.errors %}
-      <p class="errorlist">Usuario o contraseña inválidos.</p>
+      <div class="error" role="alert">Usuario o contraseña incorrectos. Inténtalo de nuevo.</div>
     {% endif %}
-    <form method="post">
+
+    <form method="post" novalidate>
       {% csrf_token %}
-      {{ form.as_p }}
-      <button type="submit">Entrar</button>
+      {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
+
+      <div>
+        <label for="id_username">Usuario</label>
+        <input id="id_username" name="username" type="text" autocomplete="username" placeholder="tu.usuario" required>
+      </div>
+
+      <div>
+        <label for="id_password">Contraseña</label>
+        <input id="id_password" name="password" type="password" autocomplete="current-password" placeholder="••••••••" required>
+      </div>
+
+      <div class="actions">
+        <span></span>
+        <button type="submit">Entrar</button>
+      </div>
     </form>
-    <p style="margin-top:1rem"><a href="/">Volver al inicio</a></p>
-  </div>
+
+    <div class="alt-links">
+      <!-- En login no mostramos "Volver al inicio" para evitar confusión.  -->
+      <a href="/admin/" aria-label="Ir al administrador de Django">Ir al Admin</a>
+    </div>
+
+  <div class="footer">© {{ now|date:"Y" }} OptiChat</div>
+  </main>
 </body>
 </html>
+

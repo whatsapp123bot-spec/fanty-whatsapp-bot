@@ -16,11 +16,17 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import path, include
-from .views import home # Importa la vista home
+from .views import home, logout_view
 
 urlpatterns = [
     path('admin/', admin.site.urls),
+    path('accounts/logout/', logout_view, name='logout'),
     path('accounts/', include('django.contrib.auth.urls')),
     path('', home, name='home'), # Ruta para la página de inicio
     path('', include('bots.urls')),
 ]
+
+# Branding del Admin
+admin.site.site_header = "OptiChat Admin"
+admin.site.site_title = "OptiChat Admin"
+admin.site.index_title = "OptiChat"

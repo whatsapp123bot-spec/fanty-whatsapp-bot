@@ -11,7 +11,7 @@ from django.http import (
 )
 from django.views.decorators.csrf import csrf_exempt
 from django.shortcuts import get_object_or_404, render
-from django.urls import reverse
+from django.urls import reverse, NoReverseMatch
 from django.contrib.auth.decorators import login_required
 from django.utils import timezone
 import requests
@@ -23,7 +23,7 @@ from .forms import BotForm, FlowForm
 
 def index(request):
     if request.user.is_authenticated:
-        return HttpResponseRedirect(reverse('panel'))
+        return HttpResponseRedirect(reverse('bots:panel'))
     return HttpResponse(
         """
         <h1>Mi Chatfuel — Django</h1>
@@ -48,9 +48,13 @@ def panel(request):
     bots_qs = Bot.objects.filter(owner=request.user).order_by('-created_at')
     bots_info = []
     for b in bots_qs:
-        webhook_url = request.build_absolute_uri(
-            reverse('whatsapp_webhook', args=[str(b.uuid)])
-        )
+        try:
+            webhook_url = request.build_absolute_uri(
+                reverse('bots:whatsapp_webhook', args=[str(b.uuid)])
+            )
+        except NoReverseMatch:
+            # Fallback si el nombre de URL no está disponible sin namespace
+            webhook_url = request.build_absolute_uri(f'/webhooks/whatsapp/{b.uuid}/')
         bots_info.append({
             'id': b.id,
             'name': b.name,
@@ -58,9 +62,9 @@ def panel(request):
             'uuid': str(b.uuid),
             'is_active': b.is_active,
             'created_at': b.created_at,
-            'edit_url': reverse('bot_edit', args=[b.id]),
-            'validate_url': reverse('bot_validate', args=[b.id]),
-            'flows_url': reverse('flow_list', args=[b.id]),
+            'edit_url': reverse('bots:bot_edit', args=[b.id]),
+            'validate_url': reverse('bots:bot_validate', args=[b.id]),
+            'flows_url': reverse('bots:flow_list', args=[b.id]),
             'webhook_url': webhook_url,
         })
     return render(request, 'bots/panel.html', {
@@ -180,7 +184,7 @@ def bot_new(request):
             bot = form.save(commit=False)
             bot.owner = request.user
             bot.save()
-            return HttpResponseRedirect(reverse('panel'))
+            return HttpResponseRedirect(reverse('bots:panel'))
     else:
         form = BotForm()
     return render(request, 'bots/bot_form.html', {
@@ -197,7 +201,7 @@ def bot_edit(request, pk):
         form = BotForm(request.POST, instance=bot)
         if form.is_valid():
             form.save()
-            return HttpResponseRedirect(reverse('panel'))
+            return HttpResponseRedirect(reverse('bots:panel'))
     else:
         form = BotForm(instance=bot)
     return render(request, 'bots/bot_form.html', {
@@ -241,7 +245,7 @@ def flow_new(request, bot_pk):
             flow = form.save(commit=False)
             flow.bot = bot
             flow.save()
-            return HttpResponseRedirect(reverse('flow_list', args=[bot.id]))
+            return HttpResponseRedirect(reverse('bots:flow_list', args=[bot.id]))
     else:
         form = FlowForm()
     return render(request, 'bots/flow_form.html', {
@@ -255,7 +259,7 @@ def flow_new(request, bot_pk):
 @login_required
 def flow_edit(request, bot_pk, flow_pk):
     # Redirige al Builder visual directamente
-    return HttpResponseRedirect(reverse('flow_builder', args=[bot_pk, flow_pk]))
+    return HttpResponseRedirect(reverse('bots:flow_builder', args=[bot_pk, flow_pk]))
 
 
 @csrf_exempt

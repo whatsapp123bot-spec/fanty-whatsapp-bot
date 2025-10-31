@@ -69,7 +69,7 @@ def generate_reply(messages: List[Dict[str, str]], instruction: str = "", timeou
     if not keys:
         return ""
     system_prompt = (
-        "Eres 'Fanty', una asistente de WhatsApp amable y concisa para una tienda de lencería. "
+        "Eres 'OptiChat', una asistente de WhatsApp amable y concisa para una tienda de lencería. "
         "Ayuda en español latino, sugiere y guía hacia tienda y pagos/envío. "
         f"Tienda: {STORE_URL}. " + (instruction or "")
     )
@@ -82,7 +82,7 @@ def generate_reply(messages: List[Dict[str, str]], instruction: str = "", timeou
     base_headers = {
         "Content-Type": "application/json",
         "HTTP-Referer": os.getenv('OPENROUTER_SITE_URL', STORE_URL) or "",
-        "X-Title": os.getenv('OPENROUTER_APP_NAME', 'Fanty WhatsApp Bot'),
+        "X-Title": os.getenv('OPENROUTER_APP_NAME', 'OptiChat WhatsApp Bot'),
     }
     for key in keys:
         try:
@@ -138,7 +138,7 @@ def classify_should_trigger(user_text: str, instruction: str = "", timeout: int 
         base_headers = {
             "Content-Type": "application/json",
             "HTTP-Referer": os.getenv('OPENROUTER_SITE_URL', STORE_URL) or "",
-            "X-Title": os.getenv('OPENROUTER_APP_NAME', 'Fanty WhatsApp Bot'),
+            "X-Title": os.getenv('OPENROUTER_APP_NAME', 'OptiChat WhatsApp Bot'),
         }
         for key in keys:
             try:

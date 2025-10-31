@@ -38,4 +38,4 @@ from .views2 import (  # noqa: F401
 def bot_flows(request, bot_uuid):
     """Compat: esta vista ya no se usa; redirige a la lista de flujos del bot."""
     bot = get_object_or_404(Bot, uuid=bot_uuid, owner=request.user)
-    return HttpResponseRedirect(reverse('flow_list', args=[bot.id]))
+    return HttpResponseRedirect(reverse('bots:flow_list', args=[bot.id]))

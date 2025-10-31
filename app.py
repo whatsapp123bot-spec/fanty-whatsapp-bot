@@ -4,6 +4,14 @@ Compatibility entrypoint for Render.
 - If executed with `python app.py`, runs Django dev server on $PORT.
 """
 import os
+import sys
+from pathlib import Path
+
+# Ensure Python path so 'usuarios' y 'bots' (ubicados en ./mi_chatfuel) sean importables
+BASE = Path(__file__).resolve().parent
+apps_path = str(BASE / "mi_chatfuel")
+if apps_path not in sys.path:
+    sys.path.append(apps_path)
 
 # Ensure Django settings
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "mi_chatfuel.mi_chatfuel.settings")
