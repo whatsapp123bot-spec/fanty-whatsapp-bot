@@ -39,19 +39,19 @@
   /* Bot (out) a la derecha; Cliente (in) a la izquierda */
   .msg-wrap.in{align-self:flex-start}
   .msg-wrap.out{align-self:flex-end}
-  .msg{padding:8px 12px;border-radius:10px;font-size:14px;position:relative}
+  .msg{padding:8px 12px;border-radius:10px;font-size:14px;display:inline-flex;align-items:flex-end;gap:8px;max-width:100%}
+  .bubble-txt{white-space:pre-wrap;word-break:break-word}
   /* Cliente: gris a la izquierda */
-  .msg.in{background:#f3f4f6;border:1px solid rgba(0,0,0,.06);color:#111827;box-shadow:0 4px 10px rgba(15,23,42,.08);padding-left:36px}
+  .msg.in{background:#f3f4f6;border:1px solid rgba(0,0,0,.06);color:#111827;box-shadow:0 4px 10px rgba(15,23,42,.08)}
   /* Bot: verde a la derecha (tono suave) */
-  .msg.out{background:#d1fae5;border:1px solid rgba(34,197,94,.35);color:#111827;box-shadow:0 4px 10px rgba(34,197,94,.12);padding-right:36px}
+  .msg.out{background:#d1fae5;border:1px solid rgba(34,197,94,.35);color:#111827;box-shadow:0 4px 10px rgba(34,197,94,.12)}
   /* Píldoras de opciones bajo mensajes del bot */
   .options{display:flex;flex-direction:column;gap:6px;margin-top:6px}
   .option-pill{display:block;width:100%;text-align:left;padding:10px 12px;border-radius:10px;background:#d1fae5;color:#111827;border:1px solid rgba(34,197,94,.35);box-shadow:0 2px 8px rgba(34,197,94,.12);font-weight:400;font-size:14px}
   .option-pill:hover{filter:brightness(0.98)}
-  /* Hora dentro de la burbuja */
-  .bubble-time{position:absolute;bottom:6px;font-size:11px;color:#64748b}
-  .msg.in .bubble-time{left:10px}
-  .msg.out .bubble-time{right:10px}
+  /* Hora dentro de la burbuja (no se superpone) */
+  .bubble-time{font-size:11px;color:#64748b;line-height:1;flex-shrink:0}
+  .checks{font-size:13px;color:#64748b;line-height:1;flex-shrink:0}
   /* Deshabilitado */
   .composer input:disabled{opacity:.6;cursor:not-allowed}
   .composer .btn:disabled{opacity:.6;cursor:not-allowed}
@@ -173,8 +173,13 @@
       (j.messages||[]).forEach(m => {
         const wrap = document.createElement('div'); wrap.className = 'msg-wrap ' + (m.direction==='in'?'in':'out');
         const dv = document.createElement('div'); dv.className = 'msg ' + (m.direction==='in'?'in':'out');
-        dv.textContent = (m.body && String(m.body).trim()) || `[${m.type}]`;
-        const tm = document.createElement('span'); tm.className='bubble-time'; tm.textContent = formatTime(m.created_at); dv.appendChild(tm);
+        const tx = document.createElement('span'); tx.className='bubble-txt'; tx.textContent = (m.body && String(m.body).trim()) || `[${m.type}]`;
+        const tm = document.createElement('span'); tm.className='bubble-time'; tm.textContent = formatTime(m.created_at);
+        dv.appendChild(tx); dv.appendChild(tm);
+        if (m.direction==='out'){
+          const ck = document.createElement('span'); ck.className='checks'; ck.textContent = '✓✓';
+          dv.appendChild(ck);
+        }
         wrap.appendChild(dv);
         // Si el mensaje saliente tenía botones, muéstralos como pills debajo
         if (m.direction==='out' && Array.isArray(m.options) && m.options.length){
