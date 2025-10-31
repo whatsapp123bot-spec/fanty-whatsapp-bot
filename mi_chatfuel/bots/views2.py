@@ -240,7 +240,11 @@ def api_panel_send_message(request):
             return JsonResponse({'error': 'No se obtuvo URL pública del archivo'}, status=500)
 
         if is_image:
-            send_whatsapp_image(u.bot, wa_id, link, caption=text or None)
+            try:
+                result = send_whatsapp_image(u.bot, wa_id, link, caption=text or None)
+            except Exception as e:
+                return JsonResponse({'error': f'Error enviando imagen a WhatsApp: {e}'}, status=502)
+            return JsonResponse({'ok': True, 'sent': 'image', 'wa': result})
         else:
             # Para documentos, además de Cloudinary subimos a la API de WhatsApp para obtener un media_id (más confiable)
             try:
@@ -261,15 +265,22 @@ def api_panel_send_message(request):
                 # Si falla el upload a WhatsApp, usar el enlace directo como fallback
                 media_id = None
             filename = up_file.name
-            if media_id:
-                send_whatsapp_document_id(u.bot, wa_id, media_id=media_id, filename=filename, caption=text or None)
-            else:
-                send_whatsapp_document(u.bot, wa_id, link, filename=filename, caption=text or None)
-        return JsonResponse({'ok': True, 'sent': 'file'})
+            try:
+                if media_id:
+                    result = send_whatsapp_document_id(u.bot, wa_id, media_id=media_id, filename=filename, caption=text or None)
+                    return JsonResponse({'ok': True, 'sent': 'document', 'strategy': 'media_id', 'media_id': media_id, 'wa': result})
+                else:
+                    result = send_whatsapp_document(u.bot, wa_id, link, filename=filename, caption=text or None)
+                    return JsonResponse({'ok': True, 'sent': 'document', 'strategy': 'link', 'wa': result})
+            except Exception as e:
+                return JsonResponse({'error': f'Error enviando documento a WhatsApp: {e}'}, status=502)
 
     # Si no hay archivo, enviar texto
-    send_whatsapp_text(u.bot, wa_id, text)
-    return JsonResponse({'ok': True, 'sent': 'text'})
+    try:
+        result = send_whatsapp_text(u.bot, wa_id, text)
+    except Exception as e:
+        return JsonResponse({'error': f'Error enviando texto a WhatsApp: {e}'}, status=502)
+    return JsonResponse({'ok': True, 'sent': 'text', 'wa': result})
 
 
 @login_required
