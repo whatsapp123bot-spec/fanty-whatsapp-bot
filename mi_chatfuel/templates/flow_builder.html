@@ -406,6 +406,16 @@
             <input id="ai_phone" type="text" placeholder="+51 999 999 999" />
           </div>
           <div style="grid-column:1 / span 2">
+            <label>Descripción de tu tienda (¿qué vendes?)</label>
+            <textarea id="ai_store_desc" placeholder="Ej. Vendemos lencería y pijamas; o frazadas y ropa de cama; o calzado para mujer; o inmuebles en Lima y provincia."></textarea>
+          </div>
+          <div style="grid-column:1 / span 2">
+            <label>Vista previa de saludo</label>
+            <div id="ai_welcome_preview" style="border:1px solid rgba(255,255,255,.12); background:#0a0f1a; color:#e5e7eb; border-radius:10px; padding:10px 12px; font-size:14px;">
+              
+            </div>
+          </div>
+          <div style="grid-column:1 / span 2">
             <label>Correo electrónico</label>
             <input id="ai_email" type="email" placeholder="soporte@tu-dominio.com" />
           </div>
@@ -1394,6 +1404,14 @@ Callao; S/ 15; 48-72h"></textarea>
     function closeAIConfig(){ document.getElementById('aiOverlay').style.display='none'; }
     document.addEventListener('keydown', (e)=>{ if(e.key==='Escape') closeAIConfig(); });
     (function(){ const ov = document.getElementById('aiOverlay'); ov.addEventListener('click', (e)=>{ if (e.target===ov) closeAIConfig(); }); })();
+    function updateWelcomePreview(){
+      try{
+        const name = (document.getElementById('ai_name')?.value||'').trim() || 'Asistente';
+        const msg = `Hola, soy ${name}, tu asistente de ventas. ¿Qué te gustaría ver hoy?`;
+        const box = document.getElementById('ai_welcome_preview');
+        if (box) box.textContent = msg;
+      }catch(_){ /* noop */ }
+    }
     function importAIFromFlow(){
       try{
         const cfg = (flow.ai_config||{});
@@ -1403,6 +1421,7 @@ Callao; S/ 15; 48-72h"></textarea>
         set('ai_lang', p.language||'');
         set('ai_site', p.website_url||'');
         set('ai_phone', p.phone_number||'');
+        set('ai_store_desc', p.store_description||p.presentation||p.about||'');
         set('ai_email', p.email||'');
         set('ai_required', Array.isArray(p.required_order_info)? p.required_order_info.join('\n') : '');
         set('ai_oos', Array.isArray(cfg.not_supported)? cfg.not_supported.join('\n') : '');
@@ -1469,8 +1488,16 @@ Callao; S/ 15; 48-72h"></textarea>
         set('sales_wh_prep', wholesale.prep_time||'');
         const whDisc = Array.isArray(wholesale.discounts)? wholesale.discounts.map(d => [d.from_units||'', d.percent||''].join('; ')).join('\n') : '';
         set('sales_wh_discounts', whDisc);
+        updateWelcomePreview();
       }catch(_){ /* noop */ }
     }
+    // Actualizar preview al cambiar nombre/descripción
+    ;(function(){
+      const el1 = document.getElementById('ai_name');
+      const el2 = document.getElementById('ai_store_desc');
+      if (el1) el1.addEventListener('input', updateWelcomePreview);
+      if (el2) el2.addEventListener('input', updateWelcomePreview);
+    })();
     function applyAIToFlow(){
       const profile = {
         assistant_name: document.getElementById('ai_name')?.value||'',
@@ -1478,6 +1505,7 @@ Callao; S/ 15; 48-72h"></textarea>
         language: document.getElementById('ai_lang')?.value||'',
         website_url: document.getElementById('ai_site')?.value||'',
         phone_number: document.getElementById('ai_phone')?.value||'',
+        store_description: document.getElementById('ai_store_desc')?.value||'',
         email: document.getElementById('ai_email')?.value||''
       };
       flow.ai_config = flow.ai_config || {};

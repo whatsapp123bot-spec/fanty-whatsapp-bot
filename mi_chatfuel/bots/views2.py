@@ -619,6 +619,10 @@ def whatsapp_webhook(request, bot_uuid):
                         result['assistant_name'] = prof.get('assistant_name')
                     if prof.get('language') and not result.get('language'):
                         result['language'] = prof.get('language')
+                    # Descripción/presentación del negocio/asistente
+                    if prof.get('store_description') and not (result.get('about') or result.get('presentation')):
+                        result['about'] = prof.get('store_description')
+                        result['presentation'] = prof.get('store_description')
                     if (prof.get('website_url') or prof.get('website')) and not result.get('website'):
                         result['website'] = prof.get('website_url') or prof.get('website')
                     if (prof.get('phone_number') or prof.get('phone')) and not result.get('phone'):
@@ -939,10 +943,82 @@ def whatsapp_webhook(request, bot_uuid):
             if pid.upper() == 'MENU_PRINCIPAL' and (flow_cfg or {}).get('start_node'):
                 send_flow_node(flow_cfg.get('start_node'))
                 return JsonResponse({'status': 'ok'})
+            # Acciones rápidas de bienvenida (Catálogo, Pagos, Envíos)
+            if pid.upper() in ('OPEN_CATALOG','OPEN_PAYMENTS','OPEN_SHIPPING'):
+                ai_cfg_wc = _flatten_ai_cfg(flow_cfg)
+                persona = {
+                    'name': (
+                        ai_cfg_wc.get('assistant_name')
+                        or ai_cfg_wc.get('assistant')
+                        or ai_cfg_wc.get('assistantName')
+                        or ai_cfg_wc.get('nombre_asistente')
+                        or ai_cfg_wc.get('name')
+                        or 'Asistente'
+                    ),
+                    'about': ai_cfg_wc.get('about') or ai_cfg_wc.get('presentation') or '',
+                    'language': ai_cfg_wc.get('language') or 'español',
+                    'website': ai_cfg_wc.get('website') or ai_cfg_wc.get('website_url') or '',
+                    'catalog_url': ai_cfg_wc.get('catalog_url') or '',
+                    # Pagos
+                    'yape_number': ai_cfg_wc.get('yape_number') or '',
+                    'yape_holder': ai_cfg_wc.get('yape_holder') or '',
+                    'yape_alias': ai_cfg_wc.get('yape_alias') or '',
+                    'yape_qr': ai_cfg_wc.get('yape_qr') or '',
+                    'plin_number': ai_cfg_wc.get('plin_number') or '',
+                    'plin_holder': ai_cfg_wc.get('plin_holder') or '',
+                    'plin_qr': ai_cfg_wc.get('plin_qr') or '',
+                    'card_brands': ai_cfg_wc.get('card_brands') or '',
+                    'card_provider': ai_cfg_wc.get('card_provider') or '',
+                    'card_paylink': ai_cfg_wc.get('card_paylink') or '',
+                    'transfer_accounts': ai_cfg_wc.get('transfer_accounts') or '',
+                    'transfer_instructions': ai_cfg_wc.get('transfer_instructions') or '',
+                    'cash_on_delivery_yes': ai_cfg_wc.get('cash_on_delivery_yes') or '',
+                    # Envíos
+                    'districts_costs': ai_cfg_wc.get('districts_costs') or '',
+                    'typical_delivery_time': ai_cfg_wc.get('typical_delivery_time') or '',
+                    'free_shipping_from': ai_cfg_wc.get('free_shipping_from') or '',
+                    'delivery_partners': ai_cfg_wc.get('delivery_partners') or '',
+                }
+                quick_text = None
+                if pid.upper() == 'OPEN_CATALOG':
+                    quick_text = answer_from_persona('web', persona, brand=((flow_cfg or {}).get('brand') or None))
+                elif pid.upper() == 'OPEN_PAYMENTS':
+                    quick_text = answer_from_persona('pagos', persona, brand=((flow_cfg or {}).get('brand') or None))
+                elif pid.upper() == 'OPEN_SHIPPING':
+                    quick_text = answer_from_persona('envios', persona, brand=((flow_cfg or {}).get('brand') or None))
+                if quick_text:
+                    try:
+                        send_whatsapp_text(bot, wa_from, quick_text)
+                    except Exception:
+                        pass
+                return JsonResponse({'status': 'ok'})
             return JsonResponse({'status': 'ok'})
 
         # Expirar flujo si no hubo respuesta del usuario > 5 min
         if user.flow_node and user.last_in_at and (timezone.now() - user.last_in_at) > timezone.timedelta(minutes=5):
+            # Enviar aviso de cierre por inactividad + redes sociales (si están configuradas)
+            try:
+                ai_cfg_wc = _flatten_ai_cfg(flow_cfg)
+                redes = []
+                if ai_cfg_wc.get('instagram'):
+                    redes.append(f"Instagram: {ai_cfg_wc.get('instagram')}")
+                if ai_cfg_wc.get('facebook'):
+                    redes.append(f"Facebook: {ai_cfg_wc.get('facebook')}")
+                if ai_cfg_wc.get('tiktok'):
+                    redes.append(f"TikTok: {ai_cfg_wc.get('tiktok')}")
+                if ai_cfg_wc.get('youtube'):
+                    redes.append(f"YouTube: {ai_cfg_wc.get('youtube')}")
+                if ai_cfg_wc.get('x'):
+                    redes.append(f"X: {ai_cfg_wc.get('x')}")
+                if ai_cfg_wc.get('linktree'):
+                    redes.append(f"Linktree: {ai_cfg_wc.get('linktree')}")
+                base_msg = "Cerramos este flujo por inactividad (no hubo respuesta). Puedes escribirnos en cualquier momento."
+                if redes:
+                    base_msg += "\nSíguenos: " + " | ".join(redes)
+                send_whatsapp_text(bot, wa_from, base_msg)
+            except Exception:
+                # no impedir el cierre si falló el envío
+                pass
             user.flow_node = None
             user.save(update_fields=['flow_node'])
 
@@ -1064,8 +1140,26 @@ def whatsapp_webhook(request, bot_uuid):
                 if ('[' in welcome_message and ']' in welcome_message and 'nombre del negocio' in wlow):
                     welcome_message = f"Hola, soy {assistant_name}, tu asistente de ventas. ¿Qué te gustaría ver hoy?"
                 welcome_message = welcome_message.strip()
+                # Intentar enviar botones de bienvenida según datos disponibles
                 try:
-                    send_whatsapp_text(bot, wa_from, welcome_message)
+                    buttons = []
+                    has_catalog = bool((ai_cfg_wc.get('catalog_url') or ai_cfg_wc.get('website')))
+                    has_payments = bool(
+                        ai_cfg_wc.get('yape_number') or ai_cfg_wc.get('plin_number') or ai_cfg_wc.get('card_brands') or ai_cfg_wc.get('transfer_accounts') or ai_cfg_wc.get('cash_on_delivery_yes')
+                    )
+                    has_shipping = bool(
+                        ai_cfg_wc.get('districts_costs') or ai_cfg_wc.get('typical_delivery_time') or ai_cfg_wc.get('free_shipping_from') or ai_cfg_wc.get('delivery_partners')
+                    )
+                    if has_catalog:
+                        buttons.append({'id': 'OPEN_CATALOG', 'title': '📎 Catálogo'})
+                    if has_payments:
+                        buttons.append({'id': 'OPEN_PAYMENTS', 'title': '💳 Pagos'})
+                    if has_shipping:
+                        buttons.append({'id': 'OPEN_SHIPPING', 'title': '🚚 Envíos'})
+                    if buttons:
+                        send_whatsapp_interactive_buttons(bot, wa_from, welcome_message, buttons)
+                    else:
+                        send_whatsapp_text(bot, wa_from, welcome_message)
                 except Exception:
                     pass
                 return JsonResponse({'status': 'ok'})

@@ -69,9 +69,9 @@ def generate_reply(messages: List[Dict[str, str]], instruction: str = "", timeou
     if not keys:
         return ""
     system_prompt = (
-        "Eres 'OptiChat', una asistente de WhatsApp amable y concisa para una tienda de lencería. "
-        "Ayuda en español latino, sugiere y guía hacia tienda y pagos/envío. "
-        f"Tienda: {STORE_URL}. " + (instruction or "")
+        "Eres 'OptiChat', una asistente de WhatsApp amable y concisa para un negocio. "
+        "Ayuda en español latino, guía hacia tienda, pagos y envíos según corresponda. "
+        f"Sitio: {STORE_URL}. " + (instruction or "")
     )
     payload = {
         "model": OPENROUTER_MODEL,
