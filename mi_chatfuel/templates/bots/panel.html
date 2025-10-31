@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
+  {% load static %}
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>OptiChat — Panel</title>
@@ -75,6 +76,7 @@
   .modal-result{position:absolute; inset:0; padding:12px; color:#e5e7eb; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size:12px; white-space:pre-wrap; overflow:auto}
   .error-box{border:1px solid rgba(239,68,68,.45); background:rgba(239,68,68,.08); color:#fecaca; padding:10px; border-radius:10px}
   </style>
+  <link rel="stylesheet" href="{% static 'css/responsive.css' %}">
 </head>
 <body>
   <header>

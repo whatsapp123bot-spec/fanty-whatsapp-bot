@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
+  {% load static %}
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>OptiChat — Chat en vivo</title>
@@ -73,6 +74,7 @@
   .toggle input:checked::after{transform:translateX(12px);background:#bbf7d0}
   .toggle .lbl{font-size:12px;color:#cbd5e1}
   </style>
+  <link rel="stylesheet" href="{% static 'css/responsive.css' %}">
 </head>
 <body>
   <header>

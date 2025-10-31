@@ -1,0 +1,48 @@
+/* Ajustes responsive sin afectar desktop (solo en < 900px y < 600px) */
+
+@media (max-width: 900px) {
+  /* Generales */
+  header { padding: 10px 12px !important; gap: 8px; }
+  .brand { font-size: 16px !important; }
+  .container { max-width: 100% !important; padding: 0 10px !important; margin: 14px auto !important; }
+}
+
+@media (max-width: 600px) {
+  /* ===== Panel de bots (panel.html) ===== */
+  .toolbar { flex-direction: column !important; align-items: stretch !important; gap: 10px !important; }
+  .controls { width: 100% !important; justify-content: stretch !important; }
+  .search { width: 100% !important; }
+  .search input { min-width: 0 !important; width: 100% !important; }
+  .select { width: 100% !important; }
+  .list { grid-template-columns: 1fr !important; }
+  .card { padding: 12px !important; }
+
+  /* ===== Flujos (flows.html) ===== */
+  .list { grid-template-columns: 1fr !important; }
+  .actions { gap: 6px !important; }
+
+  /* ===== Form de flujo (flow_form.html) ===== */
+  form .actions { flex-direction: column !important; align-items: stretch !important; }
+  form .actions .btn, form .actions a.btn { width: 100% !important; text-align: center; }
+
+  /* ===== Chat en vivo (live_chat.html) ===== */
+  .container { display: block !important; height: auto !important; }
+  .side { margin-bottom: 12px; border-radius: 12px !important; }
+  .main { border-radius: 12px !important; grid-template-rows: auto auto auto !important; }
+  .msgs { max-height: 55vh; }
+  .composer { position: sticky; bottom: 0; background: rgba(11,18,32,.8); backdrop-filter: blur(6px); }
+  .tools { flex-wrap: wrap; }
+  .tools input[type="search"] { flex: 1 1 100%; }
+  .tools select { width: 100%; }
+
+  /* ===== Builder (flow_builder.html) ===== */
+  .wrap { grid-template-columns: 1fr !important; gap: 8px !important; height: auto !important; }
+  .sidebar { display: none !important; }
+  .canvas { min-height: 70vh; }
+  header .actions { overflow-x: auto; max-width: 60%; }
+
+  /* ===== Chat preview (chat.html) ===== */
+  .chat-container { border-radius: 0 !important; }
+  .messages { padding-bottom: 72px !important; }
+  .wa-buttons { width: 100% !important; }
+}

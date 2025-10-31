@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
+  {% load static %}
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>OptiChat — Builder</title>
@@ -254,6 +255,7 @@
   :root[data-theme="light"] .zoom-controls button { background:#f3f4f6; color:#111827; border-color:#e5e7eb; }
   :root[data-theme="light"] .zoom-controls button:hover { background:#e5e7eb; }
   </style>
+  <link rel="stylesheet" href="{% static 'css/responsive.css' %}">
 </head>
 <body>
   <header>

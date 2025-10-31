@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
+  {% load static %}
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>OptiChat — Flujos</title>
@@ -26,6 +27,7 @@
     .row { display:flex; align-items:center; gap:8px; justify-content:space-between; color:var(--muted); font-size:12px; }
     .actions { display:flex; flex-wrap:wrap; gap:8px; }
   </style>
+  <link rel="stylesheet" href="{% static 'css/responsive.css' %}">
 </head>
 <body>
   <header>
