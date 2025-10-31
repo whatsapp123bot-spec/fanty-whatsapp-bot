@@ -1019,7 +1019,11 @@ Callao; S/ 15; 48-72h"></textarea>
     function renderButtonRow(nodeId, b, idx){
       const row = document.createElement('div'); row.className='row';
       const title = document.createElement('input'); title.placeholder='Título'; title.value = b.title || '';
-      title.oninput = () => { flow.nodes[nodeId].buttons[idx].title = title.value; refresh(); };
+      // No forzamos re-render en cada tecla para no perder foco/caret.
+      // Actualizamos el estado en vivo y refrescamos sólo al salir del campo o al presionar Enter.
+      title.oninput = () => { flow.nodes[nodeId].buttons[idx].title = title.value; };
+      title.onblur = () => { refresh(); };
+      title.addEventListener('keydown', (e)=>{ if (e.key==='Enter'){ e.preventDefault(); title.blur(); } });
       // Conector visual (drag para enlazar otro nodo)
       const connector = document.createElement('span'); connector.className='connector'; connector.title='Arrastra a otra caja para conectar';
       connector.dataset.connector = `${nodeId}:${idx}`;
