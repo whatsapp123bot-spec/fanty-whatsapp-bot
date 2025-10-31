@@ -7,17 +7,17 @@ import os
 import sys
 from pathlib import Path
 
-# Ensure Python path so 'usuarios' y 'bots' (ubicados en ./mi_chatfuel) sean importables
+# Ensure Python path so el paquete 'mi_chatfuel' (carpeta externa) sea importable
 BASE = Path(__file__).resolve().parent
 apps_path = str(BASE / "mi_chatfuel")
 if apps_path not in sys.path:
     sys.path.append(apps_path)
 
-# Ensure Django settings
-os.environ.setdefault("DJANGO_SETTINGS_MODULE", "mi_chatfuel.mi_chatfuel.settings")
+# Usamos siempre el módulo plano 'mi_chatfuel.settings' (el archivo real está en la subcarpeta interna)
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "mi_chatfuel.settings")
 
-# WSGI for gunicorn
-from mi_chatfuel.mi_chatfuel.wsgi import application as app  # noqa: E402
+# WSGI para gunicorn (módulo plano que reexporta la app)
+from mi_chatfuel.wsgi import application as app  # noqa: E402
 
 if __name__ == "__main__":
     import django  # noqa: E402

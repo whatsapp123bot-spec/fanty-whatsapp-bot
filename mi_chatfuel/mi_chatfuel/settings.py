@@ -66,16 +66,13 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
 
-_DJ_MODULE = os.environ.get('DJANGO_SETTINGS_MODULE', '')
-_NESTED = _DJ_MODULE.startswith('mi_chatfuel.mi_chatfuel')
-_APP_PREFIX = 'mi_chatfuel.' if _NESTED else ''
-
-# Apps propias, con prefijo dinámico para Render (nested) vs local (flat)
+# Apps propias (nombres totalmente cualificados para evitar ambigüedad)
 INSTALLED_APPS += [
-    f'{_APP_PREFIX}usuarios.apps.UsuariosConfig',
-    f'{_APP_PREFIX}bots.apps.BotsConfig',
+    'mi_chatfuel.usuarios.apps.UsuariosConfig',
+    'mi_chatfuel.bots.apps.BotsConfig',
 ]
-ROOT_URLCONF = 'mi_chatfuel.mi_chatfuel.urls' if _NESTED else 'mi_chatfuel.urls'
+# URLConf del proyecto (referencia estable al paquete interno como 'mi_chatfuel.urls')
+ROOT_URLCONF = 'mi_chatfuel.urls'
 
 TEMPLATES = [
     {
@@ -94,7 +91,7 @@ TEMPLATES = [
     },
 ]
 
-WSGI_APPLICATION = 'mi_chatfuel.mi_chatfuel.wsgi.application' if _NESTED else 'mi_chatfuel.wsgi.application'
+WSGI_APPLICATION = 'mi_chatfuel.wsgi.application'
 
 
 # Database
