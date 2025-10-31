@@ -1,12 +1,16 @@
 from django.urls import path
-from . import views2 as views
+from . import views
 
+app_name = 'bots'
 
 urlpatterns = [
     path('', views.index, name='home'),
     path('health/', views.health, name='health'),
     path('panel/', views.panel, name='panel'),
-    path('panel/bots/new/', views.bot_new, name='bot_new'),
+    path('panel/bots/new/', views.bot_create, name='bot_create'),
+    path('panel/bots/<uuid:bot_uuid>/edit/', views.bot_edit, name='bot_edit'),
+    path('panel/bots/<uuid:bot_uuid>/validate/', views.bot_validate, name='bot_validate'),
+    path('panel/bots/<uuid:bot_uuid>/flows/', views.bot_flows, name='bot_flows'),
     path('panel/bots/<int:pk>/edit/', views.bot_edit, name='bot_edit'),
     path('panel/bots/<int:pk>/validate/', views.bot_validate, name='bot_validate'),
     path('panel/bots/<int:bot_pk>/flows/', views.flow_list, name='flow_list'),
