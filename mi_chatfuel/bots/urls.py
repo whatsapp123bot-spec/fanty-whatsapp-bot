@@ -28,6 +28,7 @@ urlpatterns = [
     path('panel/api/conversations/<str:wa_id>/', views.api_get_conversation, name='api_get_conversation'),
     path('panel/api/send/', views.api_panel_send_message, name='api_panel_send_message'),
     path('panel/api/human/', views.api_panel_human_toggle, name='api_panel_human_toggle'),
+    path('panel/api/outbox/', views.api_outbox, name='api_outbox'),
     path('webhooks/whatsapp/<uuid:bot_uuid>/', views.whatsapp_webhook, name='whatsapp_webhook'),
     # Compat legado: algunos clientes llaman a /webhook (singular). Aceptar ambas variantes.
     path('webhook', views.whatsapp_webhook_legacy, name='webhook_legacy_no_slash'),

@@ -283,6 +283,40 @@ def api_panel_send_message(request):
     except Exception as e:
         return JsonResponse({'error': f'Error enviando texto a WhatsApp: {e}'}, status=502)
     return JsonResponse({'ok': True, 'sent': 'text', 'wa': result})
+
+
+@login_required
+def api_outbox(request):
+    """Devuelve últimos mensajes SALIENTES con su estado y respuesta de la API.
+    Filtros opcionales:
+      - wa: número de WhatsApp del cliente
+      - limit: cantidad (por defecto 50)
+      - only_errors=1: solo fallidos
+    """
+    limit = int(request.GET.get('limit') or '50')
+    wa = (request.GET.get('wa') or request.GET.get('wa_id') or '').strip()
+    only_err = (request.GET.get('only_errors') or request.GET.get('errors')) in ('1','true','yes')
+    # Bots del usuario
+    bots = Bot.objects.filter(owner=request.user)
+    qs = MessageLog.objects.filter(bot__in=bots, direction=MessageLog.OUT).order_by('-created_at')
+    if wa:
+        qs = qs.filter(wa_to=wa)
+    if only_err:
+        qs = qs.exclude(status='sent')
+    qs = qs[:max(1, min(200, limit))]
+    items = []
+    for m in qs:
+        resp = (m.payload or {}).get('response')
+        items.append({
+            'id': m.id,
+            'created_at': m.created_at.isoformat(),
+            'to': m.wa_to,
+            'status': m.status,
+            'error': m.error,
+            'response': resp,
+            'type': m.message_type,
+        })
+    return JsonResponse({'items': items})
 @login_required
 def api_panel_human_toggle(request):
     """Activa/desactiva chat humano para un wa_id.

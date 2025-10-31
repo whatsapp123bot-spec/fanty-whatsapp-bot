@@ -32,6 +32,7 @@ from .views2 import (  # noqa: F401
     whatsapp_webhook,
     chat_preview,
     send_message_preview,
+    api_outbox,
 )
 
 
