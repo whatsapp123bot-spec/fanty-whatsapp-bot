@@ -13,8 +13,9 @@
   .container{display:grid;grid-template-columns: 320px 1fr; gap:12px; padding:10px; height: calc(100vh - 52px)}
     .side,.main{background:var(--panel);border:1px solid rgba(255,255,255,.06);border-radius:16px;overflow:hidden}
     .side{display:flex;flex-direction:column}
-    .tools{padding:10px;border-bottom:1px solid rgba(255,255,255,.06);display:flex;gap:8px;align-items:center}
-    .tools input[type="search"]{flex:1;padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,.12);background:#0a0f1a;color:#e5e7eb}
+  .tools{padding:10px;border-bottom:1px solid rgba(255,255,255,.06);display:flex;gap:8px;align-items:center}
+  .tools input[type="search"]{flex:1;padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,.12);background:#0a0f1a;color:#e5e7eb}
+  .tools select{padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,.12);background:#0a0f1a;color:#e5e7eb}
     /* Switch para "Solo en vivo" */
     .tools input[type="checkbox"]{appearance:none;width:34px;height:20px;border-radius:999px;background:#0a0f1a;border:1px solid rgba(255,255,255,.16);position:relative;outline:none;cursor:pointer;transition:background .15s ease,border-color .15s ease}
     .tools input[type="checkbox"]::after{content:"";position:absolute;left:2px;top:2px;width:16px;height:16px;border-radius:999px;background:#cbd5e1;transition:transform .15s ease;background-clip:padding-box}
@@ -84,7 +85,11 @@
     <aside class="side">
       <div class="tools">
         <input id="q" type="search" placeholder="Buscar..." oninput="renderList()"/>
-  <label class="btn ghost" style="display:flex;align-items:center;gap:10px"><input id="onlyLive" type="checkbox" onchange="loadConvs()"/> Solo en vivo</label>
+        <select id="liveFilter" onchange="loadConvs()">
+          <option value="all">Todos</option>
+          <option value="open">Abierto</option>
+          <option value="closed">Cerrado</option>
+        </select>
       </div>
       <div id="list" class="list"></div>
     </aside>
@@ -102,13 +107,17 @@
       <div id="msgs" class="msgs"></div>
       <div class="composer">
         <input id="text" placeholder="Escribe un mensaje..." onkeydown="if(event.key==='Enter') send()"/>
+        <label class="btn ghost" style="display:inline-flex;align-items:center;gap:8px">
+          📎
+          <input id="file" type="file" style="display:none" onchange="attachAndSend()"/>
+        </label>
         <button id="sendBtn" class="btn" onclick="send()">Enviar</button>
       </div>
     </section>
   </div>
 
   <script>
-    let items=[]; let filtered=[]; let current=null; let onlyLive=false; let pollId=null;
+  let items=[]; let filtered=[]; let current=null; let pollId=null;
     const params = new URLSearchParams(location.search);
     const BOT_ID = params.get('bot');
     // Ajustar destino del botón Volver si tenemos contexto de bot
@@ -143,14 +152,16 @@
       } catch(e){ return ''; }
     }
     function updateComposerEnabled(){
-      const tx = document.getElementById('text'); const btn = document.getElementById('sendBtn');
+      const tx = document.getElementById('text'); const btn = document.getElementById('sendBtn'); const fl = document.getElementById('file');
       const enabled = !!(current && current.human_requested);
-      tx.disabled = !enabled; btn.disabled = !enabled;
+      tx.disabled = !enabled; btn.disabled = !enabled; if (fl) fl.disabled = !enabled;
       tx.placeholder = enabled ? 'Escribe un mensaje...' : 'Activa el chat humano para escribir';
     }
     async function loadConvs(){
-      onlyLive = document.getElementById('onlyLive').checked;
-      const r = await fetch(`/panel/api/conversations/?live=${onlyLive?1:0}${BOT_ID?`&bot=${encodeURIComponent(BOT_ID)}`:''}`);
+      const lf = (document.getElementById('liveFilter')?.value)||'all';
+      const liveParam = lf==='open'?'1':(lf==='closed'?'0':'');
+      const url = `/panel/api/conversations/?${liveParam!==''?`live=${liveParam}&`:''}${BOT_ID?`bot=${encodeURIComponent(BOT_ID)}`:''}`;
+      const r = await fetch(url);
       const j = await r.json(); items = j.items||[]; renderList();
     }
     function renderList(){
@@ -213,6 +224,17 @@
       const r = await fetch('/panel/api/send/', { method:'POST', body: fd, headers: { 'X-CSRFToken': getCookie('csrftoken') || '' } }); const j = await r.json();
       if (!j.ok){ alert(j.error||'Error'); return; }
       tx.value=''; openConv(current);
+    }
+    async function attachAndSend(){
+      if (!current) return; const f = document.getElementById('file'); const file = f.files && f.files[0]; if (!file) return;
+      const tx = document.getElementById('text'); const t = (tx.value||'').trim();
+      const fd = new FormData(); fd.append('wa_id', current.wa_id); if (t) fd.append('text', t); fd.append('file', file); if (BOT_ID) fd.append('bot', BOT_ID);
+      const btn = document.getElementById('sendBtn'); btn.disabled = true;
+      try{
+        const r = await fetch('/panel/api/send/', { method:'POST', body: fd, headers: { 'X-CSRFToken': getCookie('csrftoken') || '' } }); const j = await r.json();
+        if (!j.ok){ alert(j.error||'Error'); return; }
+        tx.value=''; f.value=''; openConv(current);
+      } finally { btn.disabled = false; }
     }
     async function toggleHuman(on){
   if (!current) return; const fd = new FormData(); fd.append('wa_id', current.wa_id); fd.append('on', on? '1':'0'); if (BOT_ID) fd.append('bot', BOT_ID);

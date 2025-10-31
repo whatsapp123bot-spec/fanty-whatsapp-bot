@@ -17,6 +17,7 @@ from django.contrib.auth.decorators import login_required
 from django.utils import timezone
 import requests
 from django.conf import settings
+import mimetypes as _mtypes
 
 from .models import Bot, MessageLog, Flow, WaUser
 from .forms import BotForm, FlowForm
@@ -86,14 +87,16 @@ def panel_live_chat(request):
 def api_list_conversations(request):
     """Lista conversaciones recientes del usuario logueado (todas las de sus bots)."""
     limit = int(request.GET.get('limit', '100'))
-    human_only = request.GET.get('live') == '1'
+    live_param = request.GET.get('live')  # '1' -> solo abiertas, '0' -> solo cerradas, None -> todas
     bots = list(Bot.objects.filter(owner=request.user, is_active=True))
     bot_ids = [b.id for b in bots]
     items = []
     if bot_ids:
         qs = WaUser.objects.filter(bot_id__in=bot_ids)
-        if human_only:
+        if live_param == '1':
             qs = qs.filter(human_requested=True)
+        elif live_param == '0':
+            qs = qs.filter(human_requested=False)
         qs = qs.order_by('-last_message_at')[:limit]
         for u in qs:
             items.append({
@@ -189,16 +192,63 @@ def api_panel_send_message(request):
         return JsonResponse({'error': 'Método no permitido'}, status=405)
     wa_id = request.POST.get('wa_id')
     text = (request.POST.get('text') or '').strip()
-    if not wa_id or not text:
+    up_file = request.FILES.get('file')
+    if not wa_id or (not text and not up_file):
         return JsonResponse({'error': 'Faltan parámetros'}, status=400)
     u = WaUser.objects.filter(wa_id=wa_id, bot__owner=request.user).first()
     if not u:
         return JsonResponse({'error': 'No encontrado'}, status=404)
     if not u.human_requested:
         return JsonResponse({'error': 'Chat humano no activo para este usuario'}, status=403)
-    from .services import send_whatsapp_text
+    from .services import send_whatsapp_text, send_whatsapp_image, send_whatsapp_document
+
+    # Si viene archivo, primero subir a Cloudinary (recomendado) y luego enviar
+    if up_file:
+        try:
+            import cloudinary
+            from cloudinary import uploader
+        except Exception:
+            return JsonResponse({'error': 'Cargas de archivo requieren CLOUDINARY_URL configurado'}, status=400)
+
+        # Detectar tipo
+        ctype = getattr(up_file, 'content_type', None) or _mtypes.guess_type(up_file.name)[0] or ''
+        is_image = ctype.startswith('image/')
+
+        # Parámetros para Cloudinary
+        folder = os.environ.get('CLOUDINARY_FOLDER', 'opti-chat/uploads')
+        max_mb = int(os.environ.get('CLOUDINARY_MAX_MB') or '20')
+        up_file.seek(0, os.SEEK_END)
+        size_mb = up_file.tell() / (1024*1024)
+        up_file.seek(0)
+        if size_mb > max_mb:
+            return JsonResponse({'error': f'Archivo demasiado grande (> {max_mb} MB)'}, status=400)
+
+        try:
+            if is_image:
+                res = uploader.upload(up_file, folder=folder, resource_type='image', use_filename=True, unique_filename=True)
+            else:
+                # documentos (pdf, docx, etc.) van como raw; usar upload_large si pesa más de ~20MB
+                if size_mb > 18:
+                    res = uploader.upload_large(up_file, folder=folder, resource_type='raw', use_filename=True, unique_filename=True)
+                else:
+                    res = uploader.upload(up_file, folder=folder, resource_type='raw', use_filename=True, unique_filename=True)
+        except Exception as e:
+            return JsonResponse({'error': f'Error subiendo archivo: {e}'}, status=400)
+
+        link = res.get('secure_url') or res.get('url')
+        if not link:
+            return JsonResponse({'error': 'No se obtuvo URL pública del archivo'}, status=500)
+
+        if is_image:
+            send_whatsapp_image(u.bot, wa_id, link, caption=text or None)
+        else:
+            filename = res.get('original_filename') or up_file.name
+            send_whatsapp_document(u.bot, wa_id, link, filename=filename, caption=text or None)
+        return JsonResponse({'ok': True, 'sent': 'file'})
+
+    # Si no hay archivo, enviar texto
     send_whatsapp_text(u.bot, wa_id, text)
-    return JsonResponse({'ok': True})
+    return JsonResponse({'ok': True, 'sent': 'text'})
 
 
 @login_required
