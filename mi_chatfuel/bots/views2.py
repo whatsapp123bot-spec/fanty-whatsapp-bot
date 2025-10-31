@@ -593,6 +593,213 @@ def whatsapp_webhook(request, bot_uuid):
 
         flow_cfg = get_active_flow_def()
 
+        # Helper: aplanar configuración de IA del builder (ai_config) a formato plano (ai)
+        def _flatten_ai_cfg(cfg: dict) -> dict:
+            result = {}
+            try:
+                # Base plana si existe
+                base_ai = (cfg or {}).get('ai') or {}
+                if isinstance(base_ai, dict):
+                    result.update(base_ai)
+                ai_conf = (cfg or {}).get('ai_config') or {}
+                if not isinstance(ai_conf, dict):
+                    return result
+                prof = (ai_conf.get('assistant_profile') or {}) if isinstance(ai_conf.get('assistant_profile'), dict) else {}
+                biz = (ai_conf.get('business_profile') or {}) if isinstance(ai_conf.get('business_profile'), dict) else {}
+                # Policies (listas) → líneas
+                not_supported = ai_conf.get('not_supported') or []
+                if isinstance(not_supported, list) and not result.get('out_of_scope'):
+                    result['out_of_scope'] = "\n".join([str(x).strip() for x in not_supported if str(x).strip()])
+                policies = ai_conf.get('policies') or []
+                if isinstance(policies, list) and not result.get('response_policies'):
+                    result['response_policies'] = "\n".join([str(x).strip() for x in policies if str(x).strip()])
+                # Assistant profile
+                if prof:
+                    if prof.get('assistant_name') and not result.get('assistant_name'):
+                        result['assistant_name'] = prof.get('assistant_name')
+                    if prof.get('language') and not result.get('language'):
+                        result['language'] = prof.get('language')
+                    if (prof.get('website_url') or prof.get('website')) and not result.get('website'):
+                        result['website'] = prof.get('website_url') or prof.get('website')
+                    if (prof.get('phone_number') or prof.get('phone')) and not result.get('phone'):
+                        result['phone'] = prof.get('phone_number') or prof.get('phone')
+                    if prof.get('email') and not result.get('email'):
+                        result['email'] = prof.get('email')
+                    roi = prof.get('required_order_info') or []
+                    if isinstance(roi, list) and not result.get('order_required'):
+                        result['order_required'] = "\n".join([str(x).strip() for x in roi if str(x).strip()])
+                # Business profile
+                if biz:
+                    if biz.get('business_name') and not result.get('trade_name'):
+                        result['trade_name'] = biz.get('business_name')
+                    if biz.get('legal_name') and not result.get('legal_name'):
+                        result['legal_name'] = biz.get('legal_name')
+                    if biz.get('ruc') and not result.get('ruc'):
+                        result['ruc'] = biz.get('ruc')
+                    hours = biz.get('hours') or {}
+                    if isinstance(hours, dict):
+                        if hours.get('timezone') and not result.get('timezone'):
+                            result['timezone'] = hours.get('timezone')
+                        if hours.get('weekdays') and not result.get('hours_mon_fri'):
+                            result['hours_mon_fri'] = hours.get('weekdays')
+                        if hours.get('saturday') and not result.get('hours_sat'):
+                            result['hours_sat'] = hours.get('saturday')
+                        if hours.get('sunday') and not result.get('hours_sun'):
+                            result['hours_sun'] = hours.get('sunday')
+                    addr = biz.get('address') or {}
+                    if isinstance(addr, dict):
+                        if addr.get('address_line') and not result.get('address'):
+                            result['address'] = addr.get('address_line')
+                        if addr.get('city') and not result.get('city'):
+                            result['city'] = addr.get('city')
+                        if addr.get('region') and not result.get('region'):
+                            result['region'] = addr.get('region')
+                        if addr.get('country') and not result.get('country'):
+                            result['country'] = addr.get('country')
+                        if addr.get('maps_url') and not result.get('maps_url'):
+                            result['maps_url'] = addr.get('maps_url')
+                        if addr.get('ubigeo') and not result.get('ubigeo'):
+                            result['ubigeo'] = addr.get('ubigeo')
+                    socials = biz.get('socials') or {}
+                    if isinstance(socials, dict):
+                        for k_src, k_dst in [
+                            ('instagram','instagram'), ('facebook','facebook'), ('tiktok','tiktok'), ('youtube','youtube'),
+                            ('x','x'), ('linktree','linktree'), ('whatsapp_link','whatsapp_link'), ('website','catalog_url')
+                        ]:
+                            if socials.get(k_src) and not result.get(k_dst):
+                                result[k_dst] = socials.get(k_src)
+                    payments = biz.get('payments') or {}
+                    if isinstance(payments, dict):
+                        yp = payments.get('yape') or {}
+                        if yp:
+                            if yp.get('phone') and not result.get('yape_number'):
+                                result['yape_number'] = yp.get('phone')
+                            if yp.get('holder') and not result.get('yape_holder'):
+                                result['yape_holder'] = yp.get('holder')
+                            if yp.get('alias') and not result.get('yape_alias'):
+                                result['yape_alias'] = yp.get('alias')
+                            if yp.get('qr_url') and not result.get('yape_qr'):
+                                result['yape_qr'] = yp.get('qr_url')
+                        pl = payments.get('plin') or {}
+                        if pl:
+                            if pl.get('phone') and not result.get('plin_number'):
+                                result['plin_number'] = pl.get('phone')
+                            if pl.get('holder') and not result.get('plin_holder'):
+                                result['plin_holder'] = pl.get('holder')
+                            if pl.get('qr_url') and not result.get('plin_qr'):
+                                result['plin_qr'] = pl.get('qr_url')
+                        card = payments.get('card') or {}
+                        if card:
+                            brands = card.get('brands')
+                            if brands and not result.get('card_brands'):
+                                result['card_brands'] = ", ".join(brands) if isinstance(brands, list) else str(brands)
+                            if card.get('provider') and not result.get('card_provider'):
+                                result['card_provider'] = card.get('provider')
+                            if card.get('link_url') and not result.get('card_paylink'):
+                                result['card_paylink'] = card.get('link_url')
+                            if (card.get('surcharge') or card.get('notes')) and not result.get('card_fee_notes'):
+                                result['card_fee_notes'] = card.get('surcharge') or card.get('notes')
+                        tf = payments.get('transfer') or {}
+                        if tf:
+                            banks = tf.get('banks') or []
+                            if isinstance(banks, list) and not result.get('transfer_accounts'):
+                                lines = []
+                                for bk in banks:
+                                    if not isinstance(bk, dict):
+                                        continue
+                                    parts = [
+                                        bk.get('bank') or '',
+                                        bk.get('account_number') or '',
+                                        bk.get('cci') or '',
+                                        bk.get('holder') or '',
+                                        bk.get('doc') or '',
+                                    ]
+                                    if any([p.strip() for p in parts]):
+                                        lines.append('; '.join(parts).strip())
+                                if lines:
+                                    result['transfer_accounts'] = "\n".join(lines)
+                            if tf.get('instructions') and not result.get('transfer_instructions'):
+                                result['transfer_instructions'] = tf.get('instructions')
+                        cod = payments.get('cod') or {}
+                        if cod and not result.get('cash_on_delivery_yes'):
+                            note = cod.get('notes')
+                            if note:
+                                result['cash_on_delivery_yes'] = note
+                    shipping = biz.get('shipping') or {}
+                    if isinstance(shipping, dict):
+                        dRates = shipping.get('district_rates') or []
+                        if isinstance(dRates, list) and not result.get('districts_costs'):
+                            lines = []
+                            for dr in dRates:
+                                if not isinstance(dr, dict):
+                                    continue
+                                parts = [dr.get('district') or '', dr.get('price') or '', dr.get('eta') or '']
+                                if any([p.strip() for p in parts]):
+                                    lines.append('; '.join(parts).strip())
+                            if lines:
+                                result['districts_costs'] = "\n".join(lines)
+                        if shipping.get('delivery_time') and not result.get('typical_delivery_time'):
+                            result['typical_delivery_time'] = shipping.get('delivery_time')
+                        if shipping.get('free_shipping_threshold') and not result.get('free_shipping_from'):
+                            result['free_shipping_from'] = shipping.get('free_shipping_threshold')
+                        if shipping.get('pickup_address') and not result.get('pickup_address'):
+                            result['pickup_address'] = shipping.get('pickup_address')
+                        partners = shipping.get('partners')
+                        if partners and not result.get('delivery_partners'):
+                            result['delivery_partners'] = ", ".join(partners) if isinstance(partners, list) else str(partners)
+                    sales = biz.get('sales') or {}
+                    if isinstance(sales, dict):
+                        retail = sales.get('retail') or {}
+                        if isinstance(retail, dict) and result.get('retail_yes') is None:
+                            if 'enabled' in retail:
+                                result['retail_yes'] = 'Sí' if retail.get('enabled') else 'No'
+                        wholesale = sales.get('wholesale') or {}
+                        if isinstance(wholesale, dict):
+                            if 'enabled' in wholesale and result.get('wholesale_yes') is None:
+                                result['wholesale_yes'] = 'Sí' if wholesale.get('enabled') else 'No'
+                            if wholesale.get('min_units') and not result.get('wholesale_min_qty'):
+                                result['wholesale_min_qty'] = str(wholesale.get('min_units'))
+                            if wholesale.get('price_list_url') and not result.get('wholesale_price_list_url'):
+                                result['wholesale_price_list_url'] = wholesale.get('price_list_url')
+                            if 'requires_ruc' in wholesale and not result.get('wholesale_requires_ruc'):
+                                result['wholesale_requires_ruc'] = 'Sí' if wholesale.get('requires_ruc') else 'No'
+                            if wholesale.get('prep_time') and not result.get('prep_time_large_orders'):
+                                result['prep_time_large_orders'] = wholesale.get('prep_time')
+                            disc = wholesale.get('discounts') or []
+                            if isinstance(disc, list) and not result.get('volume_discounts'):
+                                lines = []
+                                for dct in disc:
+                                    if not isinstance(dct, dict):
+                                        continue
+                                    parts = [
+                                        (str(dct.get('from_units')) if dct.get('from_units') is not None else ''),
+                                        (str(dct.get('percent')) if dct.get('percent') is not None else ''),
+                                    ]
+                                    if any([p.strip() for p in parts]):
+                                        lines.append('; '.join(parts).strip())
+                                if lines:
+                                    result['volume_discounts'] = "\n".join(lines)
+                    policies = biz.get('policies') or {}
+                    if isinstance(policies, dict):
+                        if policies.get('returns') and not result.get('returns_policy'):
+                            result['returns_policy'] = policies.get('returns')
+                        if policies.get('warranty') and not result.get('warranty'):
+                            result['warranty'] = policies.get('warranty')
+                        if policies.get('terms_url') and not result.get('terms_url'):
+                            result['terms_url'] = policies.get('terms_url')
+                        if policies.get('privacy_url') and not result.get('privacy_url'):
+                            result['privacy_url'] = policies.get('privacy_url')
+                        inv = policies.get('invoices') or {}
+                        if isinstance(inv, dict):
+                            if 'boleta' in inv and not result.get('boleta_yes'):
+                                result['boleta_yes'] = 'Sí' if inv.get('boleta') else 'No'
+                            if 'factura' in inv and not result.get('factura_yes'):
+                                result['factura_yes'] = 'Sí' if inv.get('factura') else 'No'
+            except Exception:
+                # No romper si viene mal formado
+                return result
+            return result
+
         # Helpers envío y IA
         from .services import (
             send_whatsapp_text,
@@ -603,6 +810,12 @@ def whatsapp_webhook(request, bot_uuid):
             ai_select_trigger,
             ai_answer,
         )
+        # OpenRouter helpers para clasificación de intención y naturalización
+        try:
+            from services.ai_service import classify_intent_label, naturalize_from_answer
+        except Exception:
+            classify_intent_label = None  # type: ignore
+            naturalize_from_answer = None  # type: ignore
 
         def send_flow_node(node_id: str):
             nodes = (flow_cfg or {}).get('nodes') or {}
@@ -748,8 +961,8 @@ def whatsapp_webhook(request, bot_uuid):
             ).exists()
         except Exception:
             is_first_contact = False
-        if is_first_contact and not user.human_requested and not user.flow_node and raw_text:
-            ai_cfg_wc = (flow_cfg or {}).get('ai') or {}
+        if is_first_contact and not user.human_requested and not user.flow_node and raw_text and ((flow_cfg or {}).get('ai') or (flow_cfg or {}).get('ai_config')):
+            ai_cfg_wc = _flatten_ai_cfg(flow_cfg)
             brand_wc = (
                 (flow_cfg or {}).get('brand')
                 or ai_cfg_wc.get('trade_name')
@@ -757,7 +970,15 @@ def whatsapp_webhook(request, bot_uuid):
                 or ai_cfg_wc.get('legal_name')
                 or bot.name
             )
-            assistant_name = (ai_cfg_wc.get('assistant_name') or ai_cfg_wc.get('name') or (brand_wc and f"{brand_wc} Asistente") or 'Asistente').strip()
+            _assistant_name = (
+                ai_cfg_wc.get('assistant_name')
+                or ai_cfg_wc.get('assistant')
+                or ai_cfg_wc.get('assistantName')
+                or ai_cfg_wc.get('nombre_asistente')
+                or ai_cfg_wc.get('name')
+                or 'Asistente'
+            )
+            assistant_name = (_assistant_name or '').strip()
             welcome_message = (
                 ai_cfg_wc.get('welcome_message')
                 or ai_cfg_wc.get('welcome')
@@ -846,17 +1067,26 @@ def whatsapp_webhook(request, bot_uuid):
             # Respuesta IA general sólo si NO humano y NO flujo activo
             if not user.human_requested:
                 # Construir persona/"cerebro" desde el flujo
-                ai_cfg = (flow_cfg or {}).get('ai') or {}
+                ai_cfg = _flatten_ai_cfg(flow_cfg)
                 # Back-compat: soportar posibles claves usadas en el builder
+                _assistant_name = (
+                    ai_cfg.get('assistant_name')
+                    or ai_cfg.get('assistant')
+                    or ai_cfg.get('assistantName')
+                    or ai_cfg.get('nombre_asistente')
+                    or ai_cfg.get('name')
+                    or 'Asistente'
+                )
                 persona = {
-                    'name': ai_cfg.get('name') or ai_cfg.get('assistant_name') or 'Asistente',
+                    'name': _assistant_name,
                     'about': ai_cfg.get('about') or ai_cfg.get('presentation') or '',
                     'knowledge': ai_cfg.get('knowledge') or ai_cfg.get('brain') or ai_cfg.get('kb') or '',
                     'style': ai_cfg.get('style') or '',
                     'system': ai_cfg.get('system') or ai_cfg.get('instructions') or '',
                     'language': ai_cfg.get('language') or ai_cfg.get('lang') or 'español',
-                    'website': ai_cfg.get('website') or ai_cfg.get('site') or ai_cfg.get('url') or '',
-                    'phone': ai_cfg.get('phone') or ai_cfg.get('telefono') or '',
+                    # Aceptar también claves del Builder: website_url y phone_number
+                    'website': ai_cfg.get('website') or ai_cfg.get('website_url') or ai_cfg.get('site') or ai_cfg.get('url') or '',
+                    'phone': ai_cfg.get('phone') or ai_cfg.get('phone_number') or ai_cfg.get('telefono') or '',
                     'email': ai_cfg.get('email') or ai_cfg.get('correo') or '',
                     'order_required': ai_cfg.get('order_required') or ai_cfg.get('required_info') or ai_cfg.get('required_fields') or '',
                     'out_of_scope': ai_cfg.get('out_of_scope') or ai_cfg.get('oos') or ai_cfg.get('temas_fuera') or '',
@@ -930,6 +1160,28 @@ def whatsapp_webhook(request, bot_uuid):
                     except Exception:
                         pass
                     return JsonResponse({'status': 'ok'})
+                # Segundo: si no encontró, usar IA SOLO para detectar intención y responder con datos del Cerebro
+                # (no inventar información; la respuesta final se arma desde persona)
+                if callable(classify_intent_label):
+                    allowed_labels = [
+                        'ubicacion','telefono','web','redes','horarios','pagos','yape','plin','tarjeta','transferencia','contraentrega',
+                        'envios','mayorista','ruc','boleta','factura'
+                    ]
+                    label = classify_intent_label(raw_text, allowed_labels, language=(persona.get('language') or 'español'))
+                    if label:
+                        # Reusar motor determinista con un prompt canónico
+                        quick2 = answer_from_persona(label, persona, brand=( (flow_cfg or {}).get('brand') or persona.get('trade_name') or persona.get('legal_name') or None ))
+                        if quick2:
+                            final_text = quick2
+                            if callable(naturalize_from_answer):
+                                refined = naturalize_from_answer(raw_text, quick2, assistant_name=persona.get('name'), language=(persona.get('language') or 'español'))
+                                if (refined or '').strip():
+                                    final_text = refined.strip()
+                            try:
+                                send_whatsapp_text(bot, wa_from, final_text)
+                            except Exception:
+                                pass
+                            return JsonResponse({'status': 'ok'})
                 # Permitir override de marca en flujo si existe, priorizando el nombre comercial del cerebro
                 brand = (
                     (flow_cfg or {}).get('brand')
