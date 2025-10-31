@@ -242,7 +242,8 @@ def api_panel_send_message(request):
         if is_image:
             send_whatsapp_image(u.bot, wa_id, link, caption=text or None)
         else:
-            filename = res.get('original_filename') or up_file.name
+            # Asegurar extensión para WhatsApp mostrando el nombre original del usuario
+            filename = up_file.name
             send_whatsapp_document(u.bot, wa_id, link, filename=filename, caption=text or None)
         return JsonResponse({'ok': True, 'sent': 'file'})
 

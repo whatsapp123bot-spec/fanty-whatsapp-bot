@@ -105,11 +105,12 @@
         </div>
       </div>
       <div id="msgs" class="msgs"></div>
+      <div id="preview" style="display:none;padding:8px 10px;border-top:1px solid rgba(255,255,255,.06);background:rgba(0,0,0,.15)"></div>
       <div class="composer">
         <input id="text" placeholder="Escribe un mensaje..." onkeydown="if(event.key==='Enter') send()"/>
-        <label class="btn ghost" style="display:inline-flex;align-items:center;gap:8px">
+        <label class="btn ghost" style="display:inline-flex;align-items:center;gap:8px" title="Adjuntar">
           📎
-          <input id="file" type="file" style="display:none" onchange="attachAndSend()"/>
+          <input id="file" type="file" accept="image/*,.pdf,.doc,.docx,.xls,.xlsx" style="display:none" onchange="attach()"/>
         </label>
         <button id="sendBtn" class="btn" onclick="send()">Enviar</button>
       </div>
@@ -218,24 +219,32 @@
       if (pollId) clearInterval(pollId);
       pollId = setInterval(()=>{ if(current) openConv(current); }, 8000);
     }
+    let pendingFile = null;
     async function send(){
-      if (!current) return; const tx = document.getElementById('text'); const t = (tx.value||'').trim(); if (!t) return;
-  const fd = new FormData(); fd.append('wa_id', current.wa_id); fd.append('text', t); if (BOT_ID) fd.append('bot', BOT_ID);
+      if (!current) return; const tx = document.getElementById('text'); const t = (tx.value||'').trim(); if (!t && !pendingFile) return;
+  const fd = new FormData(); fd.append('wa_id', current.wa_id); if (t) fd.append('text', t); if (pendingFile) fd.append('file', pendingFile); if (BOT_ID) fd.append('bot', BOT_ID);
       const r = await fetch('/panel/api/send/', { method:'POST', body: fd, headers: { 'X-CSRFToken': getCookie('csrftoken') || '' } }); const j = await r.json();
       if (!j.ok){ alert(j.error||'Error'); return; }
-      tx.value=''; openConv(current);
+      tx.value=''; pendingFile=null; document.getElementById('preview').style.display='none'; document.getElementById('preview').innerHTML=''; document.getElementById('file').value=''; openConv(current);
     }
-    async function attachAndSend(){
-      if (!current) return; const f = document.getElementById('file'); const file = f.files && f.files[0]; if (!file) return;
-      const tx = document.getElementById('text'); const t = (tx.value||'').trim();
-      const fd = new FormData(); fd.append('wa_id', current.wa_id); if (t) fd.append('text', t); fd.append('file', file); if (BOT_ID) fd.append('bot', BOT_ID);
-      const btn = document.getElementById('sendBtn'); btn.disabled = true;
-      try{
-        const r = await fetch('/panel/api/send/', { method:'POST', body: fd, headers: { 'X-CSRFToken': getCookie('csrftoken') || '' } }); const j = await r.json();
-        if (!j.ok){ alert(j.error||'Error'); return; }
-        tx.value=''; f.value=''; openConv(current);
-      } finally { btn.disabled = false; }
+    function attach(){
+      const f = document.getElementById('file'); const file = f.files && f.files[0]; if (!file) return;
+      pendingFile = file;
+      const prev = document.getElementById('preview');
+      const isImg = file.type && file.type.startsWith('image/');
+      let html = '<div style="display:flex;align-items:center;gap:10px">';
+      if (isImg){
+        const url = URL.createObjectURL(file);
+        html += `<img src="${url}" style="width:44px;height:44px;object-fit:cover;border-radius:6px;border:1px solid rgba(255,255,255,.12)"/>`;
+      } else {
+        html += '<div style="width:44px;height:44px;border-radius:6px;border:1px solid rgba(255,255,255,.12);display:flex;align-items:center;justify-content:center">📄</div>';
+      }
+      html += `<div style="flex:1;min-width:0"><div style="font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${file.name}</div><div style="font-size:12px;color:#94a3b8">${(file.size/1024/1024).toFixed(2)} MB</div></div>`;
+      html += `<button class="btn minor" onclick="clearPreview()">✕ Quitar</button>`;
+      html += '</div>';
+      prev.innerHTML = html; prev.style.display='block';
     }
+    function clearPreview(){ pendingFile=null; const prev=document.getElementById('preview'); prev.innerHTML=''; prev.style.display='none'; document.getElementById('file').value=''; }
     async function toggleHuman(on){
   if (!current) return; const fd = new FormData(); fd.append('wa_id', current.wa_id); fd.append('on', on? '1':'0'); if (BOT_ID) fd.append('bot', BOT_ID);
       const r = await fetch('/panel/api/human/', { method:'POST', body: fd, headers: { 'X-CSRFToken': getCookie('csrftoken') || '' } }); const j = await r.json();
