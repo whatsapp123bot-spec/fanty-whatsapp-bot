@@ -51,7 +51,7 @@ def _norm_text(s: str) -> str:
     return s
 
 
-def answer_from_persona(user_text: str, persona: dict | None) -> str | None:
+def answer_from_persona(user_text: str, persona: dict | None, brand: str | None = None) -> str | None:
     """Devuelve una respuesta directa usando los campos del 'Cerebro' sin IA generativa.
     Cubre consultas típicas: quién eres, teléfonos, redes, web, horarios, dirección/mapa,
     Yape/Plin, pagos, envíos, mayorista, RUC, boleta/factura, etc.
@@ -62,7 +62,7 @@ def answer_from_persona(user_text: str, persona: dict | None) -> str | None:
     p = {k: (persona.get(k) or '').strip() for k in persona.keys()}
 
     # Nombres negocio
-    biz = (p.get('trade_name') or p.get('legal_name') or '').strip()
+    biz = (p.get('trade_name') or p.get('legal_name') or (brand or '')).strip()
     asist = (p.get('name') or 'Asistente').strip()
 
     # Saludo/Identidad
@@ -90,6 +90,15 @@ def answer_from_persona(user_text: str, persona: dict | None) -> str | None:
         if links:
             return ' | '.join(links)
         return 'Por el momento no contamos con enlaces de web o catálogo.'
+
+    # ¿Qué vendes? Productos/servicios
+    if any(kw in t for kw in ['que vendes', 'qué vendes', 'que ofrecen', 'qué ofrecen', 'productos', 'servicios', 'vendes', 'ofrecen']):
+        if p.get('catalog_url'):
+            return f"Puedes ver nuestro catálogo aquí: {p.get('catalog_url')}"
+        # Si no hay catálogo, intenta remitir a la web si existe
+        if p.get('website'):
+            return f"Puedes ver más información en nuestra web: {p.get('website')}"
+        return 'Por el momento no contamos con un catálogo publicado.'
 
     # Redes sociales
     if any(kw in t for kw in ['redes', 'red social', 'instagram', 'facebook', 'tiktok', 'youtube', 'twitter', 'x', 'linktree']):

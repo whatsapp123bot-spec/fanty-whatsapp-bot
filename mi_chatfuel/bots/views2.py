@@ -871,7 +871,7 @@ def whatsapp_webhook(request, bot_uuid):
                     'factura_yes': ai_cfg.get('factura_yes') or '',
                 }
                 # Primero: intento determinista basado en el Cerebro (sin IA generativa)
-                quick = answer_from_persona(raw_text, persona)
+                quick = answer_from_persona(raw_text, persona, brand=( (flow_cfg or {}).get('brand') or persona.get('trade_name') or persona.get('legal_name') or None ))
                 if quick:
                     try:
                         send_whatsapp_text(bot, wa_from, quick)
