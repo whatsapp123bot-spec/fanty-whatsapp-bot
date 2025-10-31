@@ -81,7 +81,7 @@ def ai_select_trigger(user_text: str, candidates: list[dict]) -> str | None:
 
 def ai_answer(
     user_text: str,
-    brand: str = 'OptiChat',
+    brand: str | None = None,
     persona: dict | None = None,
     temperature: float = 0.4,
     max_tokens: int = 220,
@@ -243,14 +243,21 @@ def ai_answer(
     boleta_yes = (p.get('boleta_yes') or '').strip()
     factura_yes = (p.get('factura_yes') or '').strip()
 
+    # Determinar nombre de negocio prioritario
+    business_name = (trade_name or (brand.strip() if isinstance(brand, str) else '') or legal_name).strip()
+
     rules = [
-        f"Te llamas {name}. Perteneces a {brand}.",
+        f"Te llamas {name}.",
+        (f"Eres el asistente virtual de {business_name}." if business_name else ""),
         f"Responde SIEMPRE en {language}.",
         "No digas que eres un modelo de lenguaje o una IA; preséntate como un asistente del negocio.",
+        "Usa el nombre del negocio indicado (y sólo ese); no menciones otras marcas o plataformas.",
         "Usa la base de conocimiento provista; si falta información, pide un dato concreto y sugiere alternativas.",
         "Responde en 1-3 frases. Enlaza pasos claros cuando sea útil.",
         f"Tono: {style}",
     ]
+    # Elimina entradas vacías
+    rules = [r for r in rules if r]
     if about:
         rules.append(f"Presentación: {about}")
     if knowledge:

@@ -869,8 +869,13 @@ def whatsapp_webhook(request, bot_uuid):
                     'boleta_yes': ai_cfg.get('boleta_yes') or '',
                     'factura_yes': ai_cfg.get('factura_yes') or '',
                 }
-                # Permitir override de marca en flujo si existe
-                brand = (flow_cfg or {}).get('brand') or 'OptiChat'
+                # Permitir override de marca en flujo si existe, priorizando el nombre comercial del cerebro
+                brand = (
+                    (flow_cfg or {}).get('brand')
+                    or persona.get('trade_name')
+                    or persona.get('legal_name')
+                    or None
+                )
                 answer = ai_answer(raw_text, brand=brand, persona=persona)
                 if not answer:
                     # Fallback amable sin inventar información
