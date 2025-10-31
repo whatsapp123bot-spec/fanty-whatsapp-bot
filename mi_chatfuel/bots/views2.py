@@ -2,6 +2,7 @@ import json
 import os
 import mimetypes
 from pathlib import Path
+import difflib
 
 from django.http import (
     HttpResponse,
@@ -702,14 +703,46 @@ def whatsapp_webhook(request, bot_uuid):
                 return JsonResponse({'status': 'ok'})
             return JsonResponse({'status': 'ok'})
 
-        # Texto libre: intentar triggers si no hay flujo activo
-        text_low = (msg.get('text', {}).get('body') or '').strip().lower()
+        # Texto libre: lógica de triggers + cierre de flujo
+        raw_text = (msg.get('text', {}).get('body') or '').strip()
+        text_low = raw_text.lower()
         nodes = (flow_cfg or {}).get('nodes') or {}
         enabled = (flow_cfg or {}).get('enabled', True)
+
+        # Comando: Cerrar flujo (si hay flujo activo)
+        def _norm_close(s: str) -> bool:
+            return s.replace('á','a').replace('é','e').replace('í','i').replace('ó','o').replace('ú','u').strip() == 'cerrar flujo'
+
         if enabled and nodes:
             if user.flow_node:
-                send_whatsapp_text(bot, wa_from, 'Por favor, elige una opción del menú.')
+                if _norm_close(text_low):
+                    user.flow_node = None
+                    user.save(update_fields=['flow_node'])
+                    try:
+                        send_whatsapp_text(bot, wa_from, '✅ Flujo cerrado. Puedes escribir otra cosa cuando quieras.')
+                    except Exception:
+                        pass
+                    return JsonResponse({'status': 'ok'})
+                # Mientras hay flujo activo, pedimos elegir opción
+                try:
+                    send_whatsapp_text(bot, wa_from, 'Por favor, elige una opción del menú. Escribe "Cerrar flujo" para salir.')
+                except Exception:
+                    pass
                 return JsonResponse({'status': 'ok'})
+
+            # Buscar triggers ACTIVOS (keywords, deeplink, IA)
+            def ai_match(user_text: str, patterns: str) -> bool:
+                # Heurística simple: similitud con muestras (una por línea) o coincidencia de 2+ palabras clave
+                lines = [p.strip().lower() for p in patterns.split('\n') if p.strip()]
+                for pat in lines:
+                    if difflib.SequenceMatcher(None, user_text, pat).ratio() >= 0.72:
+                        return True
+                    # token match: al menos 2 tokens compartidos de longitud >=3
+                    utoks = [t for t in user_text.split() if len(t) >= 3]
+                    ptoks = [t for t in pat.split() if len(t) >= 3]
+                    if len(set(utoks) & set(ptoks)) >= 2:
+                        return True
+                return False
 
             def match_trigger():
                 for nid, node in nodes.items():
@@ -723,24 +756,23 @@ def whatsapp_webhook(request, bot_uuid):
                         continue
                     if ttype == 'keywords':
                         kws = [p.strip().lower() for p in pats.split(',') if p.strip()]
-                        if any(k in text_low for k in kws):
+                        if any(k and k in text_low for k in kws):
                             return node.get('next') or nid
                     elif ttype == 'deeplink':
                         lines = [p.strip().lower() for p in pats.split('\n') if p.strip()]
                         if text_low in lines:
                             return node.get('next') or nid
                     elif ttype == 'ai':
-                        continue
+                        if ai_match(text_low, pats):
+                            return node.get('next') or nid
                 return None
 
             target = match_trigger()
             if target:
                 send_flow_node(target)
                 return JsonResponse({'status': 'ok'})
-            if flow_cfg.get('start_node'):
-                send_flow_node(flow_cfg.get('start_node'))
-                return JsonResponse({'status': 'ok'})
 
+        # No activar flujo si no hay trigger; no responder
         return JsonResponse({'status': 'ok'})
 
     return HttpResponse(status=405)
@@ -857,7 +889,15 @@ def _match_trigger(flow_cfg: dict, text_low: str) -> str | None:
             if text_low in lines:
                 return node.get('next') or nid
         elif ttype == 'ai':
-            continue
+            # Heurística para previsualización: similitud básica
+            lines = [p.strip().lower() for p in pats.split('\n') if p.strip()]
+            for pat in lines:
+                if difflib.SequenceMatcher(None, text_low, pat).ratio() >= 0.72:
+                    return node.get('next') or nid
+                utoks = [t for t in text_low.split() if len(t) >= 3]
+                ptoks = [t for t in pat.split() if len(t) >= 3]
+                if len(set(utoks) & set(ptoks)) >= 2:
+                    return node.get('next') or nid
     return None
 
 
