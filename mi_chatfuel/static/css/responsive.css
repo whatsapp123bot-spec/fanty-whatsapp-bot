@@ -26,9 +26,13 @@
   form .actions .btn, form .actions a.btn { width: 100% !important; text-align: center; }
 
   /* ===== Chat en vivo (live_chat.html) ===== */
-  .container { display: block !important; height: auto !important; }
-  .side { margin-bottom: 12px; border-radius: 12px !important; }
-  .main { border-radius: 12px !important; grid-template-rows: auto auto auto !important; }
+  .container.layout-livechat { display: block !important; height: auto !important; }
+  .container.layout-livechat .side { display: block; margin-bottom: 12px; border-radius: 12px !important; }
+  .container.layout-livechat .main { display: none; border-radius: 12px !important; grid-template-rows: auto auto auto !important; }
+  .container.layout-livechat.chat-open .side { display: none; }
+  .container.layout-livechat.chat-open .main { display: grid; }
+  .mobile-back { display: none; }
+  .container.layout-livechat.chat-open .mobile-back { display: inline-flex; }
   .msgs { max-height: 55vh; }
   .composer { position: sticky; bottom: 0; background: rgba(11,18,32,.8); backdrop-filter: blur(6px); }
   .tools { flex-wrap: wrap; }

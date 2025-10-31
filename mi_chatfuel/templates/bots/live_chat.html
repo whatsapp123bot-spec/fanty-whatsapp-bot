@@ -83,7 +83,7 @@
       <a id="backLink" class="btn minor" href="/panel/">← Volver</a>
     </nav>
   </header>
-  <div class="container">
+  <div class="container layout-livechat" id="layout">
     <aside class="side">
       <div class="tools">
         <input id="q" type="search" placeholder="Buscar..." oninput="renderList()"/>
@@ -97,7 +97,8 @@
     </aside>
     <section class="main">
       <div class="conv-head">
-        <div>
+        <div style="display:flex; align-items:center; gap:8px">
+          <button id="mobileBack" class="btn minor mobile-back" type="button" onclick="exitChatView()" title="Volver a chats">← Chats</button>
           <div id="convName" style="font-weight:800">Selecciona una conversación</div>
           <div id="convId" style="font-size:12px;color:#94a3b8"></div>
         </div>
@@ -121,6 +122,7 @@
 
   <script>
   let items=[]; let filtered=[]; let current=null; let pollId=null;
+    const layout = document.getElementById('layout');
     const params = new URLSearchParams(location.search);
     const BOT_ID = params.get('bot');
     // Ajustar destino del botón Volver si tenemos contexto de bot
@@ -182,12 +184,21 @@
         host.appendChild(div);
       })
     }
+    function enterChatView(){
+      // En móvil, muestra solo la conversación
+      try { layout.classList.add('chat-open'); } catch(_) {}
+    }
+    function exitChatView(){
+      // Volver a la lista en móvil
+      try { layout.classList.remove('chat-open'); } catch(_) {}
+    }
     async function openConv(i){
     current = i; document.getElementById('convName').textContent = i.name||i.wa_id; document.getElementById('convId').textContent = `${i.wa_id} • ${i.bot_name}`;
   document.getElementById('chipLive').className = 'chip ' + (i.human_requested?'on':'off');
   document.getElementById('chipLive').textContent = 'Humano: ' + (i.human_requested?'activo':'inactivo');
   const sw = document.getElementById('humanToggle'); if (sw) sw.checked = !!i.human_requested;
   updateComposerEnabled();
+  enterChatView();
   const r = await fetch(`/panel/api/conversations/${encodeURIComponent(i.wa_id)}/${BOT_ID?`?bot=${encodeURIComponent(BOT_ID)}`:''}`);
       const j = await r.json();
       const host = document.getElementById('msgs'); host.innerHTML='';
@@ -256,6 +267,10 @@
     }
     updateComposerEnabled();
     loadConvs(); setInterval(loadConvs, 15000);
+    // Si se cambia el tamaño a desktop, mantener ambas columnas visibles (CSS lo gestiona).
+    window.addEventListener('resize', ()=>{
+      // No hace falta más lógica; se deja por si en el futuro se requiera sincronizar estado.
+    });
   </script>
 </body>
 </html>
