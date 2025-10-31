@@ -156,3 +156,41 @@ def send_whatsapp_document(bot, to_number: str, link: str, filename: str, captio
     )
     resp.raise_for_status()
     return data
+
+
+def send_whatsapp_document_id(bot, to_number: str, media_id: str, filename: str, caption: str | None = None) -> dict:
+    """Envía un documento usando un media_id previamente subido a la API de WhatsApp.
+    Es útil cuando el proveedor del enlace no expone un Content-Type claro; con media_id garantizamos entrega.
+    """
+    url = _wa_url(bot.phone_number_id)
+    headers = {
+        'Authorization': f'Bearer {bot.access_token}',
+        'Content-Type': 'application/json'
+    }
+    doc = { 'id': media_id, 'filename': filename }
+    if caption:
+        doc['caption'] = caption
+    payload = {
+        'messaging_product': 'whatsapp',
+        'to': to_number,
+        'type': 'document',
+        'document': doc
+    }
+    resp = requests.post(url, json=payload, headers=headers, timeout=15)
+    status = 'sent' if resp.ok else 'error'
+    try:
+        data = resp.json()
+    except Exception:
+        data = {'text': resp.text}
+    MessageLog.objects.create(
+        bot=bot,
+        direction=MessageLog.OUT,
+        wa_from=bot.phone_number_id,
+        wa_to=to_number,
+        message_type='document',
+        payload={'request': payload, 'response': data},
+        status=status,
+        error='' if resp.ok else str(data)
+    )
+    resp.raise_for_status()
+    return data

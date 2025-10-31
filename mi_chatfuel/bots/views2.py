@@ -200,7 +200,7 @@ def api_panel_send_message(request):
         return JsonResponse({'error': 'No encontrado'}, status=404)
     if not u.human_requested:
         return JsonResponse({'error': 'Chat humano no activo para este usuario'}, status=403)
-    from .services import send_whatsapp_text, send_whatsapp_image, send_whatsapp_document
+    from .services import send_whatsapp_text, send_whatsapp_image, send_whatsapp_document, send_whatsapp_document_id
 
     # Si viene archivo, primero subir a Cloudinary (recomendado) y luego enviar
     if up_file:
@@ -242,9 +242,29 @@ def api_panel_send_message(request):
         if is_image:
             send_whatsapp_image(u.bot, wa_id, link, caption=text or None)
         else:
-            # Asegurar extensión para WhatsApp mostrando el nombre original del usuario
+            # Para documentos, además de Cloudinary subimos a la API de WhatsApp para obtener un media_id (más confiable)
+            try:
+                # Releer bytes del archivo (tras la carga a Cloudinary, reposicionar puntero)
+                try:
+                    up_file.seek(0)
+                except Exception:
+                    pass
+                data_bytes = up_file.read()
+                media_url = f"https://graph.facebook.com/{settings.WA_GRAPH_VERSION}/{u.bot.phone_number_id}/media"
+                headers = { 'Authorization': f'Bearer {u.bot.access_token}' }
+                files = { 'file': (up_file.name, data_bytes) }
+                form = { 'messaging_product': 'whatsapp' }
+                media_resp = requests.post(media_url, headers=headers, data=form, files=files, timeout=60)
+                media_resp.raise_for_status()
+                media_id = media_resp.json().get('id')
+            except Exception as e:
+                # Si falla el upload a WhatsApp, usar el enlace directo como fallback
+                media_id = None
             filename = up_file.name
-            send_whatsapp_document(u.bot, wa_id, link, filename=filename, caption=text or None)
+            if media_id:
+                send_whatsapp_document_id(u.bot, wa_id, media_id=media_id, filename=filename, caption=text or None)
+            else:
+                send_whatsapp_document(u.bot, wa_id, link, filename=filename, caption=text or None)
         return JsonResponse({'ok': True, 'sent': 'file'})
 
     # Si no hay archivo, enviar texto
@@ -305,7 +325,7 @@ def bot_edit(request, pk):
     else:
         form = BotForm(instance=bot)
     return render(request, 'bots/bot_form.html', {
-        'title': f'Editar Bot: {bot.name}',
+        'title': f'Editar Bot — {bot.name}',
         'form': form,
         'submit_label': 'Guardar',
     })
@@ -314,15 +334,9 @@ def bot_edit(request, pk):
 @login_required
 def bot_validate(request, pk):
     bot = get_object_or_404(Bot, pk=pk, owner=request.user)
-    url = f"https://graph.facebook.com/{bot.phone_number_id}?fields=display_phone_number,id"
-    headers = {'Authorization': f'Bearer {bot.access_token}'}
-    try:
-        r = requests.get(url, headers=headers, timeout=10)
-        ok = r.ok
-        data = r.json() if 'application/json' in r.headers.get('Content-Type', '') else {'text': r.text}
-        return JsonResponse({'ok': ok, 'data': data, 'status_code': r.status_code})
-    except Exception as e:
-        return JsonResponse({'ok': False, 'error': str(e)}, status=500)
+    # Validación simple de credenciales (sin enviar mensajes)
+    ok = bool(bot.access_token and bot.phone_number_id)
+    return JsonResponse({'ok': ok, 'bot_id': bot.id})
 
 
 @login_required
