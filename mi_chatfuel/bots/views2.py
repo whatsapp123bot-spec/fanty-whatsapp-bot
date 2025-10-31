@@ -345,9 +345,17 @@ def bot_edit(request, pk):
 @login_required
 def bot_validate(request, pk):
     bot = get_object_or_404(Bot, pk=pk, owner=request.user)
-    # Validación simple de credenciales (sin enviar mensajes)
-    ok = bool(bot.access_token and bot.phone_number_id)
-    return JsonResponse({'ok': ok, 'bot_id': bot.id})
+    # Validación real contra Graph: GET /{phone_number_id}
+    if not (bot.access_token and bot.phone_number_id):
+        return JsonResponse({'ok': False, 'error': 'Faltan credenciales'}, status=400)
+    url = f"https://graph.facebook.com/{settings.WA_GRAPH_VERSION}/{bot.phone_number_id}"
+    try:
+        r = requests.get(url, headers={'Authorization': f'Bearer {bot.access_token}'}, timeout=15, params={'fields': 'id,display_phone_number'})
+        data = r.json() if r.content else {}
+        ok = r.ok and (data.get('id') == bot.phone_number_id or data.get('id'))
+        return JsonResponse({'ok': bool(ok), 'response': data, 'status': r.status_code})
+    except Exception as e:
+        return JsonResponse({'ok': False, 'error': str(e)}, status=502)
 
 
 @login_required
@@ -610,7 +618,11 @@ def whatsapp_webhook(request, bot_uuid):
                 user.human_expires_at = now + timezone.timedelta(minutes=max(1, tmin))
                 user.save(update_fields=['human_requested', 'human_timeout_min', 'human_expires_at'])
                 buttons = [{ 'id': 'MENU_PRINCIPAL', 'title': '🔙 Menú principal' }]
-                send_whatsapp_interactive_buttons(bot, wa_from, body_text, buttons)
+                try:
+                    send_whatsapp_interactive_buttons(bot, wa_from, body_text, buttons)
+                except Exception:
+                    # No romper el webhook si falla el envío (p.ej. token inválido)
+                    pass
                 return
 
             # start/trigger con next → saltar
@@ -644,10 +656,16 @@ def whatsapp_webhook(request, bot_uuid):
                 if target:
                     buttons.append({'id': target, 'title': title})
             if buttons:
-                send_whatsapp_interactive_buttons(bot, wa_from, text or ' ', buttons)
+                try:
+                    send_whatsapp_interactive_buttons(bot, wa_from, text or ' ', buttons)
+                except Exception:
+                    pass
             else:
                 if text:
-                    send_whatsapp_text(bot, wa_from, text)
+                    try:
+                        send_whatsapp_text(bot, wa_from, text)
+                    except Exception:
+                        pass
                 # Encadenar si action con next
                 if (node.get('type') or 'action').lower() == 'action' and node.get('next'):
                     send_flow_node(node.get('next'))
