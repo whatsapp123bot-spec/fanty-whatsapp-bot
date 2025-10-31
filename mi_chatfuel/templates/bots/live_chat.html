@@ -123,9 +123,21 @@
       const j = await r.json();
       const host = document.getElementById('msgs'); host.innerHTML='';
       (j.messages||[]).forEach(m => {
+        const wrap = document.createElement('div');
         const dv = document.createElement('div'); dv.className = 'msg ' + (m.direction==='in'?'in':'out');
-        dv.textContent = m.body || `[${m.type}]`;
-        host.appendChild(dv);
+        dv.textContent = (m.body && String(m.body).trim()) || `[${m.type}]`;
+        wrap.appendChild(dv);
+        // Si el mensaje saliente tenía botones, muéstralos como pills debajo
+        if (m.direction==='out' && Array.isArray(m.options) && m.options.length){
+          const pills = document.createElement('div'); pills.style.margin = '4px 0 0';
+          m.options.forEach(t=>{
+            const s = document.createElement('span');
+            s.textContent = t; s.style.display='inline-block'; s.style.margin='4px 6px 0 0'; s.style.padding='4px 10px'; s.style.borderRadius='999px'; s.style.fontSize='12px'; s.style.border='1px solid rgba(255,255,255,.18)'; s.style.color='#cbd5e1'; s.style.background='#0e1726';
+            pills.appendChild(s);
+          });
+          wrap.appendChild(pills);
+        }
+        host.appendChild(wrap);
       });
       host.scrollTop = host.scrollHeight;
       // limpiar no leídos en la UI para esta conversación y re-render lista

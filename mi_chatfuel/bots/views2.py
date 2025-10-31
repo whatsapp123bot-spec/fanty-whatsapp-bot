@@ -120,14 +120,56 @@ def api_get_conversation(request, wa_id: str):
     ).order_by('created_at')[:limit]
     out = []
     for m in msgs:
+        body_text = None
+        options = None
+        p = m.payload or {}
+
+        if m.direction == MessageLog.OUT:
+            # Mensajes enviados por el bot (nuestro request a Meta)
+            if m.message_type == 'text':
+                body_text = (p.get('request') or {}).get('text', {}).get('body')
+            elif m.message_type == 'interactive':
+                ireq = (p.get('request') or {}).get('interactive') or {}
+                body_text = (ireq.get('body') or {}).get('text')
+                # Mostrar las etiquetas de los botones como opciones
+                btns = (((ireq.get('action') or {}).get('buttons')) or [])
+                options = [
+                    ((b.get('reply') or {}).get('title') or '').strip()
+                    for b in btns if (b.get('reply') or {}).get('title')
+                ] or None
+            elif m.message_type == 'image':
+                body_text = '[imagen]'
+            elif m.message_type == 'document':
+                body_text = '[documento]'
+        else:
+            # Mensajes entrantes desde Meta (webhook crudo)
+            try:
+                entry = (p.get('entry') or [{}])[0]
+                value = (entry.get('changes') or [{}])[0].get('value') or {}
+                mm = (value.get('messages') or [{}])[0]
+                mtype = (mm.get('type') or m.message_type or '').lower()
+                if mtype == 'text':
+                    body_text = (mm.get('text') or {}).get('body')
+                elif mtype == 'interactive':
+                    inter = mm.get('interactive') or {}
+                    if 'button_reply' in inter:
+                        body_text = (inter.get('button_reply') or {}).get('title') or (inter.get('button_reply') or {}).get('id')
+                    elif 'list_reply' in inter:
+                        body_text = (inter.get('list_reply') or {}).get('title') or (inter.get('list_reply') or {}).get('id')
+                    else:
+                        body_text = '[interacción]'
+                elif mtype == 'button':
+                    body_text = (mm.get('button') or {}).get('text') or (mm.get('button') or {}).get('payload')
+                else:
+                    body_text = f'[{mtype or "mensaje"}]'
+            except Exception:
+                body_text = None
+
         out.append({
             'direction': m.direction,
             'type': m.message_type,
-            'body': (m.payload or {}).get('request', {}).get('text', {}).get('body') if m.direction == MessageLog.OUT and m.message_type == 'text' else (
-                (m.payload or {}).get('request', {}).get('interactive', {}).get('body', {}).get('text') if m.direction == MessageLog.OUT and m.message_type == 'interactive' else (
-                    (m.payload or {}).get('response', {}).get('messages', [{}])[0].get('text', {}).get('body') if m.direction == MessageLog.IN else None
-                )
-            ),
+            'body': body_text,
+            'options': options,
             'created_at': m.created_at.isoformat(),
         })
     return JsonResponse({'wa_id': wa_id, 'name': u.name, 'human_requested': u.human_requested, 'messages': out})
