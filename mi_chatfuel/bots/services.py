@@ -99,7 +99,74 @@ def ai_answer(
             'phone': str,          # teléfono de contacto
             'email': str,          # correo de contacto
             'order_required': str, # campos requeridos de pedido (una por línea)
-            'out_of_scope': str,   # temas fuera de alcance (una por línea)
+                    'out_of_scope': str,   # temas fuera de alcance (una por línea)
+                    'response_policies': str, # políticas de respuesta (una por línea)
+                    'comm_policies': str,     # políticas de comunicación (una por línea)
+
+                    # Perfil del negocio
+                    'trade_name': str,
+                    'legal_name': str,
+                    'ruc': str,
+                    'timezone': str,
+                    'address': str,
+                    'city': str,
+                    'region': str,
+                    'country': str,
+                    'maps_url': str,
+                    'ubigeo': str,
+                    'hours_mon_fri': str,
+                    'hours_sat': str,
+                    'hours_sun': str,
+
+                    # Redes y enlaces
+                    'instagram': str,
+                    'facebook': str,
+                    'tiktok': str,
+                    'youtube': str,
+                    'x': str,
+                    'linktree': str,
+                    'whatsapp_link': str,
+                    'catalog_url': str,
+
+                    # Modalidad de venta
+                    'retail_yes': str,
+                    'wholesale_yes': str,
+                    'wholesale_min_qty': str,
+                    'wholesale_price_list_url': str,
+                    'wholesale_requires_ruc': str,
+                    'prep_time_large_orders': str,
+                    'volume_discounts': str,
+
+                    # Pagos
+                    'yape_number': str,
+                    'yape_holder': str,
+                    'yape_alias': str,
+                    'yape_qr': str,
+                    'plin_number': str,
+                    'plin_holder': str,
+                    'plin_qr': str,
+                    'card_brands': str,
+                    'card_provider': str,
+                    'card_paylink': str,
+                    'card_fee_notes': str,
+                    'transfer_accounts': str,
+                    'transfer_instructions': str,
+                    'cash_on_delivery_yes': str,
+
+                    # Envíos y cobertura
+                    'districts_costs': str,
+                    'typical_delivery_time': str,
+                    'free_shipping_from': str,
+                    'pickup_address': str,
+                    'delivery_partners': str,
+
+                    # Políticas y comprobantes
+                    'returns_policy': str,
+                    'warranty': str,
+                    'terms_url': str,
+                    'privacy_url': str,
+                    'boleta_yes': str,
+                    'factura_yes': str,
         }
     """
     p = persona or {}
@@ -114,6 +181,67 @@ def ai_answer(
     email = (p.get('email') or p.get('correo') or '').strip()
     order_required = (p.get('order_required') or p.get('required_info') or p.get('required_fields') or '').strip()
     out_of_scope = (p.get('out_of_scope') or p.get('oos') or p.get('temas_fuera') or '').strip()
+    response_policies = (p.get('response_policies') or p.get('pol_resp') or '').strip()
+    comm_policies = (p.get('comm_policies') or p.get('pol_comm') or '').strip()
+
+    trade_name = (p.get('trade_name') or '').strip()
+    legal_name = (p.get('legal_name') or '').strip()
+    ruc = (p.get('ruc') or '').strip()
+    timezone = (p.get('timezone') or '').strip()
+    address = (p.get('address') or '').strip()
+    city = (p.get('city') or '').strip()
+    region = (p.get('region') or '').strip()
+    country = (p.get('country') or '').strip()
+    maps_url = (p.get('maps_url') or '').strip()
+    ubigeo = (p.get('ubigeo') or '').strip()
+    hours_mon_fri = (p.get('hours_mon_fri') or '').strip()
+    hours_sat = (p.get('hours_sat') or '').strip()
+    hours_sun = (p.get('hours_sun') or '').strip()
+
+    instagram = (p.get('instagram') or '').strip()
+    facebook = (p.get('facebook') or '').strip()
+    tiktok = (p.get('tiktok') or '').strip()
+    youtube = (p.get('youtube') or '').strip()
+    x_twitter = (p.get('x') or p.get('twitter') or '').strip()
+    linktree = (p.get('linktree') or '').strip()
+    whatsapp_link = (p.get('whatsapp_link') or '').strip()
+    catalog_url = (p.get('catalog_url') or '').strip()
+
+    retail_yes = (p.get('retail_yes') or '').strip()
+    wholesale_yes = (p.get('wholesale_yes') or '').strip()
+    wholesale_min_qty = (p.get('wholesale_min_qty') or '').strip()
+    wholesale_price_list_url = (p.get('wholesale_price_list_url') or '').strip()
+    wholesale_requires_ruc = (p.get('wholesale_requires_ruc') or '').strip()
+    prep_time_large_orders = (p.get('prep_time_large_orders') or '').strip()
+    volume_discounts = (p.get('volume_discounts') or '').strip()
+
+    yape_number = (p.get('yape_number') or '').strip()
+    yape_holder = (p.get('yape_holder') or '').strip()
+    yape_alias = (p.get('yape_alias') or '').strip()
+    yape_qr = (p.get('yape_qr') or '').strip()
+    plin_number = (p.get('plin_number') or '').strip()
+    plin_holder = (p.get('plin_holder') or '').strip()
+    plin_qr = (p.get('plin_qr') or '').strip()
+    card_brands = (p.get('card_brands') or '').strip()
+    card_provider = (p.get('card_provider') or '').strip()
+    card_paylink = (p.get('card_paylink') or '').strip()
+    card_fee_notes = (p.get('card_fee_notes') or '').strip()
+    transfer_accounts = (p.get('transfer_accounts') or '').strip()
+    transfer_instructions = (p.get('transfer_instructions') or '').strip()
+    cash_on_delivery_yes = (p.get('cash_on_delivery_yes') or '').strip()
+
+    districts_costs = (p.get('districts_costs') or '').strip()
+    typical_delivery_time = (p.get('typical_delivery_time') or '').strip()
+    free_shipping_from = (p.get('free_shipping_from') or '').strip()
+    pickup_address = (p.get('pickup_address') or '').strip()
+    delivery_partners = (p.get('delivery_partners') or '').strip()
+
+    returns_policy = (p.get('returns_policy') or '').strip()
+    warranty = (p.get('warranty') or '').strip()
+    terms_url = (p.get('terms_url') or '').strip()
+    privacy_url = (p.get('privacy_url') or '').strip()
+    boleta_yes = (p.get('boleta_yes') or '').strip()
+    factura_yes = (p.get('factura_yes') or '').strip()
 
     rules = [
         f"Te llamas {name}. Perteneces a {brand}.",
@@ -127,6 +255,122 @@ def ai_answer(
         rules.append(f"Presentación: {about}")
     if knowledge:
         rules.append(f"Base de conocimiento:\n{knowledge}")
+    if response_policies:
+        rules.append("Políticas de respuesta:\n" + response_policies)
+    if comm_policies:
+        rules.append("Políticas de comunicación:\n" + comm_policies)
+    # Perfil, horarios y contacto
+    prof = []
+    if trade_name:
+        prof.append(f"Nombre comercial: {trade_name}")
+    if legal_name:
+        prof.append(f"Razón social: {legal_name}")
+    if ruc:
+        prof.append(f"RUC: {ruc}")
+    if timezone:
+        prof.append(f"Zona horaria: {timezone}")
+    addr_parts = [address, city, region, country]
+    addr = ", ".join([a for a in addr_parts if a])
+    if addr:
+        prof.append(f"Dirección: {addr}")
+    if maps_url:
+        prof.append(f"Mapa: {maps_url}")
+    if ubigeo:
+        prof.append(f"Ubigeo: {ubigeo}")
+    if hours_mon_fri or hours_sat or hours_sun:
+        prof.append("Horarios: ")
+        if hours_mon_fri:
+            prof.append(f"L-V: {hours_mon_fri}")
+        if hours_sat:
+            prof.append(f"Sábado: {hours_sat}")
+        if hours_sun:
+            prof.append(f"Domingos/Feriados: {hours_sun}")
+    if prof:
+        rules.append("Perfil/Horarios:\n" + "\n".join(prof))
+    # Redes y enlaces
+    links = []
+    for label, val in [('Instagram', instagram), ('Facebook', facebook), ('TikTok', tiktok), ('YouTube', youtube), ('X', x_twitter), ('LinkTree', linktree), ('WhatsApp', whatsapp_link), ('Tienda', catalog_url)]:
+        if val:
+            links.append(f"{label}: {val}")
+    if links:
+        rules.append("Redes y enlaces:\n" + "\n".join(links))
+    # Venta y descuentos
+    sale = []
+    if retail_yes:
+        sale.append(f"Venta por menor: {retail_yes}")
+    if wholesale_yes:
+        sale.append(f"Venta por mayor: {wholesale_yes}")
+    if wholesale_min_qty:
+        sale.append(f"Pedido mínimo mayorista: {wholesale_min_qty}")
+    if wholesale_price_list_url:
+        sale.append(f"Lista mayorista: {wholesale_price_list_url}")
+    if wholesale_requires_ruc:
+        sale.append(f"Mayorista requiere RUC: {wholesale_requires_ruc}")
+    if prep_time_large_orders:
+        sale.append(f"Tiempo de preparación (grandes): {prep_time_large_orders}")
+    if volume_discounts:
+        sale.append("Descuentos por volumen:\n" + volume_discounts)
+    if sale:
+        rules.append("Modalidad de venta:\n" + "\n".join(sale))
+    # Pagos
+    pay = []
+    if yape_number or yape_holder:
+        item = f"Yape: {yape_number} — Titular: {yape_holder}"
+        if yape_alias:
+            item += f" — Alias: {yape_alias}"
+        if yape_qr:
+            item += f" — QR: {yape_qr}"
+        pay.append(item)
+    if plin_number or plin_holder:
+        item = f"Plin: {plin_number} — Titular: {plin_holder}"
+        if plin_qr:
+            item += f" — QR: {plin_qr}"
+        pay.append(item)
+    if card_brands or card_provider:
+        item = f"Tarjeta: {card_brands} — Proveedor: {card_provider}"
+        if card_paylink:
+            item += f" — Link de pago: {card_paylink}"
+        if card_fee_notes:
+            item += f" — Notas: {card_fee_notes}"
+        pay.append(item)
+    if transfer_accounts:
+        pay.append("Transferencia bancaria (cuentas):\n" + transfer_accounts)
+    if transfer_instructions:
+        pay.append("Instrucciones transferencia: " + transfer_instructions)
+    if cash_on_delivery_yes:
+        pay.append(f"Contraentrega: {cash_on_delivery_yes}")
+    if pay:
+        rules.append("Pagos:\n" + "\n".join(pay))
+    # Envíos
+    ship = []
+    if districts_costs:
+        ship.append("Distritos/costos/tiempos:\n" + districts_costs)
+    if typical_delivery_time:
+        ship.append(f"Tiempo típico: {typical_delivery_time}")
+    if free_shipping_from:
+        ship.append(f"Envío gratis desde: {free_shipping_from}")
+    if pickup_address:
+        ship.append(f"Retiro en tienda: {pickup_address}")
+    if delivery_partners:
+        ship.append(f"Socios delivery: {delivery_partners}")
+    if ship:
+        rules.append("Envíos y cobertura:\n" + "\n".join(ship))
+    # Políticas y comprobantes
+    pol = []
+    if returns_policy:
+        pol.append("Cambios/devoluciones: " + returns_policy)
+    if warranty:
+        pol.append("Garantía: " + warranty)
+    if boleta_yes:
+        pol.append("Emite boleta: " + boleta_yes)
+    if factura_yes:
+        pol.append("Emite factura: " + factura_yes)
+    if terms_url:
+        pol.append("Términos: " + terms_url)
+    if privacy_url:
+        pol.append("Privacidad: " + privacy_url)
+    if pol:
+        rules.append("Políticas/comprobantes:\n" + "\n".join(pol))
     contact_lines = []
     if website:
         contact_lines.append(f"Web: {website}")
