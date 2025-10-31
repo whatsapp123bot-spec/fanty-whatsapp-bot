@@ -872,12 +872,17 @@ def whatsapp_webhook(request, bot_uuid):
                 # Permitir override de marca en flujo si existe
                 brand = (flow_cfg or {}).get('brand') or 'OptiChat'
                 answer = ai_answer(raw_text, brand=brand, persona=persona)
-                if answer:
-                    try:
-                        send_whatsapp_text(bot, wa_from, answer)
-                    except Exception:
-                        pass
-                    return JsonResponse({'status': 'ok'})
+                if not answer:
+                    # Fallback amable sin inventar información
+                    name = persona.get('name') or 'Asistente'
+                    order_lines = [ln.strip() for ln in (persona.get('order_required') or '').split('\n') if ln.strip()]
+                    pedido_hint = ("\nSi deseas hacer un pedido, por favor comparte: " + ", ".join(order_lines[:5])) if order_lines else ''
+                    answer = f"Disculpa, no te entendí bien. ¿Podrías reformular o darme un poco más de detalle?{pedido_hint}"
+                try:
+                    send_whatsapp_text(bot, wa_from, answer)
+                except Exception:
+                    pass
+                return JsonResponse({'status': 'ok'})
 
         # No activar flujo si no hay trigger; no responder
         return JsonResponse({'status': 'ok'})
