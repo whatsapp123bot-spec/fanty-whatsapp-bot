@@ -114,10 +114,16 @@ def api_get_conversation(request, wa_id: str):
     if not u:
         return JsonResponse({'error': 'No encontrado'}, status=404)
     limit = int(request.GET.get('limit', '200'))
+    # Solo la conversación entre este wa_id y el número del bot seleccionado,
+    # evitando mezclar mensajes de otros clientes que comparten el mismo phone_number_id.
     msgs = MessageLog.objects.filter(
         bot=u.bot
     ).filter(
-        Q(wa_from=wa_id) | Q(wa_to=wa_id) | Q(wa_from=u.bot.phone_number_id) | Q(wa_to=u.bot.phone_number_id)
+        (
+            Q(wa_from=wa_id) & Q(wa_to=u.bot.phone_number_id)
+        ) | (
+            Q(wa_from=u.bot.phone_number_id) & Q(wa_to=wa_id)
+        )
     ).order_by('created_at')[:limit]
     out = []
     for m in msgs:
