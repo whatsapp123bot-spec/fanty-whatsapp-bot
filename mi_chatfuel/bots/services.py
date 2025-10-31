@@ -1,6 +1,100 @@
 import requests
 from django.conf import settings
-from .models import MessageLog
+from .models import MessageLog, AIKey
+
+
+# ======= OpenRouter AI helpers =======
+
+OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions'
+
+
+def _get_active_ai_key() -> str | None:
+    try:
+        key = AIKey.objects.filter(is_active=True).order_by('priority', 'last_used_at').first()
+        return key.api_key if key else None
+    except Exception:
+        return None
+
+
+def ai_chat(messages: list[dict], model: str | None = None, temperature: float = 0.3, max_tokens: int | None = 256) -> dict | None:
+    api_key = _get_active_ai_key()
+    if not api_key:
+        return None
+    headers = {
+        'Authorization': f'Bearer {api_key}',
+        'Content-Type': 'application/json',
+        'HTTP-Referer': 'https://opti.chat',
+        'X-Title': 'OptiChat',
+    }
+    payload = {
+        'model': model or 'openrouter/auto',
+        'messages': messages,
+        'temperature': temperature,
+    }
+    if max_tokens:
+        payload['max_tokens'] = max_tokens
+    try:
+        resp = requests.post(OPENROUTER_API_URL, json=payload, headers=headers, timeout=20)
+        resp.raise_for_status()
+        return resp.json()
+    except Exception:
+        return None
+
+
+def ai_select_trigger(user_text: str, candidates: list[dict]) -> str | None:
+    """Devuelve el id de trigger a activar entre candidates=[{id, patterns}], o None.
+    Utiliza OpenRouter para clasificación simple por similitud semántica.
+    """
+    if not candidates:
+        return None
+    sys = {
+        'role': 'system',
+        'content': (
+            'Eres un clasificador. Te doy un texto del usuario y una lista de triggers con ejemplos. '
+            'Elige el trigger más adecuado y responde sólo con el ID del trigger o NONE si ninguno aplica.'
+        )
+    }
+    user = {
+        'role': 'user',
+        'content': (
+            f"TEXTO: {user_text}\n" +
+            "TRIGGERS:\n" +
+            "\n".join([f"- id: {c.get('id')}\n  ejemplos: {c.get('patterns') or ''}" for c in candidates]) +
+            "\nResponde solo con el id exacto o NONE."
+        )
+    }
+    data = ai_chat([sys, user], temperature=0.0, max_tokens=8)
+    if not data:
+        return None
+    try:
+        text = (data.get('choices') or [{}])[0].get('message', {}).get('content', '')
+        text = (text or '').strip()
+        if not text:
+            return None
+        if text.upper().startswith('NONE'):
+            return None
+        # tomar primera palabra como id
+        return text.split()[0]
+    except Exception:
+        return None
+
+
+def ai_answer(user_text: str, brand: str = 'OptiChat') -> str | None:
+    """Devuelve una respuesta breve de IA para dudas generales."""
+    sys = {
+        'role': 'system',
+        'content': (
+            f"Eres un asistente útil y conciso de {brand}. Responde con 1-3 frases claras y útiles."
+        )
+    }
+    user = { 'role': 'user', 'content': user_text }
+    data = ai_chat([sys, user], temperature=0.4, max_tokens=200)
+    if not data:
+        return None
+    try:
+        return (data.get('choices') or [{}])[0].get('message', {}).get('content', '').strip() or None
+    except Exception:
+        return None
 
 
 def _wa_url(phone_number_id: str) -> str:

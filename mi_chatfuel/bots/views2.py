@@ -571,12 +571,14 @@ def whatsapp_webhook(request, bot_uuid):
 
         flow_cfg = get_active_flow_def()
 
-        # Helpers envío
+        # Helpers envío y IA
         from .services import (
             send_whatsapp_text,
             send_whatsapp_interactive_buttons,
             send_whatsapp_image,
             send_whatsapp_document,
+            ai_select_trigger,
+            ai_answer,
         )
 
         def send_flow_node(node_id: str):
@@ -703,7 +705,12 @@ def whatsapp_webhook(request, bot_uuid):
                 return JsonResponse({'status': 'ok'})
             return JsonResponse({'status': 'ok'})
 
-        # Texto libre: lógica de triggers + cierre de flujo
+        # Expirar flujo si no hubo respuesta del usuario > 5 min
+        if user.flow_node and user.last_in_at and (timezone.now() - user.last_in_at) > timezone.timedelta(minutes=5):
+            user.flow_node = None
+            user.save(update_fields=['flow_node'])
+
+        # Texto libre: lógica de triggers + cierre de flujo + IA
         raw_text = (msg.get('text', {}).get('body') or '').strip()
         text_low = raw_text.lower()
         nodes = (flow_cfg or {}).get('nodes') or {}
@@ -723,9 +730,9 @@ def whatsapp_webhook(request, bot_uuid):
                     except Exception:
                         pass
                     return JsonResponse({'status': 'ok'})
-                # Mientras hay flujo activo, pedimos elegir opción
+                # Mientras hay flujo activo, pedimos elegir opción (no activar IA)
                 try:
-                    send_whatsapp_text(bot, wa_from, 'Por favor, elige una opción del menú. Escribe "Cerrar flujo" para salir.')
+                    send_whatsapp_text(bot, wa_from, 'Por favor, elige una opción del menú.')
                 except Exception:
                     pass
                 return JsonResponse({'status': 'ok'})
@@ -771,6 +778,27 @@ def whatsapp_webhook(request, bot_uuid):
             if target:
                 send_flow_node(target)
                 return JsonResponse({'status': 'ok'})
+
+            # Trigger IA con OpenRouter si existen triggers tipo 'ai'
+            ai_triggers = []
+            for nid, node in nodes.items():
+                if (node.get('type') or '').lower() == 'trigger' and (node.get('trigger_type') or '').lower() == 'ai':
+                    ai_triggers.append({'id': node.get('next') or nid, 'patterns': node.get('patterns') or ''})
+            if ai_triggers:
+                chosen = ai_select_trigger(raw_text, ai_triggers)
+                if chosen:
+                    send_flow_node(chosen)
+                    return JsonResponse({'status': 'ok'})
+
+            # Respuesta IA general sólo si NO humano y NO flujo activo
+            if not user.human_requested:
+                answer = ai_answer(raw_text, brand='OptiChat')
+                if answer:
+                    try:
+                        send_whatsapp_text(bot, wa_from, answer)
+                    except Exception:
+                        pass
+                    return JsonResponse({'status': 'ok'})
 
         # No activar flujo si no hay trigger; no responder
         return JsonResponse({'status': 'ok'})
