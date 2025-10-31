@@ -283,6 +283,28 @@ def api_panel_send_message(request):
     except Exception as e:
         return JsonResponse({'error': f'Error enviando texto a WhatsApp: {e}'}, status=502)
     return JsonResponse({'ok': True, 'sent': 'text', 'wa': result})
+@login_required
+def api_panel_human_toggle(request):
+    """Activa/desactiva chat humano para un wa_id.
+    POST: wa_id, on=1|0, timeout_min opcional
+    """
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Método no permitido'}, status=405)
+    wa_id = request.POST.get('wa_id')
+    on = request.POST.get('on') == '1'
+    timeout_min = int(request.POST.get('timeout_min') or '15')
+    u = WaUser.objects.filter(wa_id=wa_id, bot__owner=request.user).first()
+    if not u:
+        return JsonResponse({'error': 'No encontrado'}, status=404)
+    if on:
+        u.human_requested = True
+        u.human_timeout_min = max(1, timeout_min)
+        u.human_expires_at = timezone.now() + timezone.timedelta(minutes=u.human_timeout_min)
+    else:
+        u.human_requested = False
+        u.human_expires_at = None
+    u.save(update_fields=['human_requested', 'human_timeout_min', 'human_expires_at'])
+    return JsonResponse({'ok': True})
 
 
 @login_required

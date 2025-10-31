@@ -396,6 +396,9 @@ def ai_answer(
     p = persona or {}
     name = (p.get('name') or '').strip() or 'Asistente'
     about = (p.get('about') or p.get('presentation') or '').strip()
+    # Evitar propagar placeholders típicos del builder
+    if ('[' in about and ']' in about) and any(w in about.lower() for w in ['nombre', 'negocio', 'empresa', 'brand']):
+        about = ''
     knowledge = (p.get('knowledge') or p.get('brain') or '').strip()
     style = (p.get('style') or 'cálido, directo, profesional').strip()
     sys_extra = (p.get('system') or '').strip()
@@ -479,6 +482,7 @@ def ai_answer(
         "Usa el nombre del negocio indicado (y sólo ese); no menciones otras marcas o plataformas.",
         "Usa la base de conocimiento provista; si falta información, pide un dato concreto y sugiere alternativas.",
         "Responde en 1-3 frases. Enlaza pasos claros cuando sea útil.",
+        "Evita frases genéricas tipo '¿en qué puedo ayudarte hoy?' si el usuario pidió un dato específico; responde directo al punto.",
         f"Tono: {style}",
     ]
     # Elimina entradas vacías
