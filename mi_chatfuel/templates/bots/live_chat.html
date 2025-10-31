@@ -36,15 +36,17 @@
     .chip.off{background:rgba(148,163,184,.12);color:#cbd5e1}
   .msgs{padding:14px;overflow:auto;display:flex;flex-direction:column;gap:12px;background:#f8fafc}
   .msg-wrap{display:flex;flex-direction:column;max-width:70%}
-  /* Estilo WhatsApp: cliente (in) a la derecha en verde; bot (out) a la izquierda en gris */
-  .msg-wrap.in{align-self:flex-end}
-  .msg-wrap.out{align-self:flex-start}
-  .msg{padding:10px 12px;border-radius:14px;font-size:14px}
-  .msg.in{background:#d1fae5;border:1px solid rgba(34,197,94,.35);color:#065f46;box-shadow:0 4px 10px rgba(34,197,94,.12)}
-  .msg.out{background:#f3f4f6;border:1px solid rgba(0,0,0,.06);color:#111827;box-shadow:0 4px 10px rgba(15,23,42,.08)}
+  /* Bot (out) a la derecha; Cliente (in) a la izquierda */
+  .msg-wrap.in{align-self:flex-start}
+  .msg-wrap.out{align-self:flex-end}
+  .msg{padding:10px 12px;border-radius:10px;font-size:14px}
+  /* Cliente: gris a la izquierda */
+  .msg.in{background:#f3f4f6;border:1px solid rgba(0,0,0,.06);color:#111827;box-shadow:0 4px 10px rgba(15,23,42,.08)}
+  /* Bot: verde a la derecha */
+  .msg.out{background:#d1fae5;border:1px solid rgba(34,197,94,.35);color:#065f46;box-shadow:0 4px 10px rgba(34,197,94,.12)}
   /* Píldoras de opciones bajo mensajes del bot */
-  .options{display:flex;flex-direction:column;gap:8px;margin-top:6px}
-  .option-pill{display:block;width:100%;text-align:left;padding:12px 14px;border-radius:14px;background:#ffffff;color:#111827;border:1px solid #e5e7eb;box-shadow:0 2px 8px rgba(2,6,23,.06);font-weight:600}
+  .options{display:flex;flex-direction:column;gap:6px;margin-top:6px}
+  .option-pill{display:block;width:100%;text-align:left;padding:10px 12px;border-radius:10px;background:#ffffff;color:#111827;border:1px solid #e5e7eb;box-shadow:0 2px 8px rgba(2,6,23,.06);font-weight:700;font-size:14px}
   .option-pill:hover{filter:brightness(0.98)}
     .composer{padding:10px;border-top:1px solid rgba(255,255,255,.06);display:flex;gap:8px}
     .composer input{flex:1;padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,.12);background:#0a0f1a;color:#e5e7eb}
