@@ -1302,12 +1302,18 @@ def whatsapp_webhook(request, bot_uuid):
                 if callable(classify_intent_label):
                     allowed_labels = [
                         'ubicacion','telefono','web','redes','horarios','pagos','yape','plin','tarjeta','transferencia','contraentrega',
-                        'envios','mayorista','ruc','boleta','factura'
+                        'envios','mayorista','ruc','boleta','factura',
+                        # Conversión/venta
+                        'compra','producto','productos','recomendacion','catalogo','modelos','precios'
                     ]
                     label = classify_intent_label(raw_text, allowed_labels, language=(persona.get('language') or 'español'))
                     if label:
-                        # Reusar motor determinista con un prompt canónico
-                        quick2 = answer_from_persona(label, persona, brand=( (flow_cfg or {}).get('brand') or persona.get('trade_name') or persona.get('legal_name') or None ))
+                        # Mapear algunas etiquetas a prompts canónicos del motor determinista
+                        mapped = label
+                        if label in ('compra','producto','productos','recomendacion','catalogo','modelos','precios'):
+                            mapped = 'comprar'
+                        # Reusar motor determinista con prompt canónico
+                        quick2 = answer_from_persona(mapped, persona, brand=( (flow_cfg or {}).get('brand') or persona.get('trade_name') or persona.get('legal_name') or None ))
                         if quick2:
                             final_text = quick2
                             if callable(naturalize_from_answer):

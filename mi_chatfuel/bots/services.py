@@ -92,19 +92,22 @@ def answer_from_persona(user_text: str, persona: dict | None, brand: str | None 
             return "¡Gracias por escribir! Puedes seguirnos: " + " | ".join(redes)
         return "¡Gracias! Si necesitas algo más, estaré atento."
 
-    # Intención de compra / cotización
-    if any(kw in t for kw in ['compr', 'disfraz', 'disfraces', 'precio', 'cotiz', 'quiero comprar', 'quiero cotizar']):
+    # Intención de compra / cotización / recomendación
+    if any(kw in t for kw in [
+        'compr', 'disfraz', 'disfraces', 'precio', 'cotiz', 'quiero comprar', 'quiero cotizar',
+        'recomiend', 'recomend', 'sugerenc', 'modelo', 'modelos', 'tienes', 'hay', 'quiero algo', 'busco', 'buscar', 'producto', 'productos', 'sexy', 'sexi'
+    ]):
         # Preferir catálogo o web si existe
         if p.get('catalog_url'):
-            return f"Perfecto. Puedes ver y elegir aquí: {p.get('catalog_url')}. ¿Qué talla o modelo buscas?"
+            return f"¡Claro! Te ayudo a elegir. Explora opciones aquí: {p.get('catalog_url')} 🛍️\n¿Talla, estilo o color que prefieras?"
         if p.get('website'):
-            return f"Claro, aquí puedes ver opciones y precios: {p.get('website')}. ¿Qué talla o modelo te interesa?"
+            return f"Claro, aquí puedes ver opciones y precios: {p.get('website')} 🛍️\n¿Qué talla o modelo te interesa?"
         # Si no hay enlaces, pedir datos mínimos si están definidos
         req = (persona.get('order_required') or '').strip() if isinstance(persona, dict) else ''
         lines = [ln.strip() for ln in req.split('\n') if ln.strip()]
         if lines:
             return 'Para ayudarte con la compra, por favor compárteme: ' + ', '.join(lines[:6])
-        return 'Con gusto te ayudo con la compra. Cuéntame qué producto, talla y cantidad necesitas.'
+        return 'Con gusto te ayudo a encontrar el producto ideal. Cuéntame qué producto, talla y cantidad necesitas.'
 
     # Saludo/Identidad
     if any(kw in t for kw in ['quien eres', 'quien sos', 'quien me habla', 'tu nombre', 'como te llamas', 'quien es este']):
@@ -191,7 +194,7 @@ def answer_from_persona(user_text: str, persona: dict | None, brand: str | None 
         # Pregunta específica por Yape
         if 'yape' in t:
             if p.get('yape_number') or p.get('yape_holder'):
-                line = f"Yape: {p.get('yape_number') or ''}"
+                line = f"🟣 Yape: {p.get('yape_number') or ''}"
                 if p.get('yape_holder'):
                     line += f" — Titular: {p.get('yape_holder')}"
                 if p.get('yape_alias'):
@@ -203,7 +206,7 @@ def answer_from_persona(user_text: str, persona: dict | None, brand: str | None 
         # Pregunta específica por Plin
         if 'plin' in t:
             if p.get('plin_number') or p.get('plin_holder'):
-                line = f"Plin: {p.get('plin_number') or ''}"
+                line = f"🔵 Plin: {p.get('plin_number') or ''}"
                 if p.get('plin_holder'):
                     line += f" — Titular: {p.get('plin_holder')}"
                 if p.get('plin_qr'):
@@ -213,7 +216,7 @@ def answer_from_persona(user_text: str, persona: dict | None, brand: str | None 
         # Tarjeta
         if 'tarjeta' in t:
             if p.get('card_brands') or p.get('card_provider') or p.get('card_paylink'):
-                item = f"Tarjeta: {p.get('card_brands') or ''}"
+                item = f"💳 Tarjeta: {p.get('card_brands') or ''}"
                 if p.get('card_provider'):
                     item += f" — Proveedor: {p.get('card_provider')}"
                 if p.get('card_paylink'):
@@ -225,7 +228,7 @@ def answer_from_persona(user_text: str, persona: dict | None, brand: str | None 
             if p.get('transfer_accounts') or p.get('transfer_instructions'):
                 msg = []
                 if p.get('transfer_accounts'):
-                    msg.append('Cuentas: ' + p.get('transfer_accounts'))
+                    msg.append('🏦 Cuentas: ' + p.get('transfer_accounts'))
                 if p.get('transfer_instructions'):
                     msg.append('Instrucciones: ' + p.get('transfer_instructions'))
                 return ' | '.join(msg)
@@ -233,22 +236,22 @@ def answer_from_persona(user_text: str, persona: dict | None, brand: str | None 
         # Contraentrega
         if 'contra' in t or 'entrega' in t:
             if p.get('cash_on_delivery_yes'):
-                return f"Contraentrega: {p.get('cash_on_delivery_yes')}"
+                return f"🚚 Contraentrega: {p.get('cash_on_delivery_yes')}"
             return 'Por el momento no contamos con contraentrega.'
         # Resumen pagos
         parts = []
         if p.get('yape_number') or p.get('yape_holder'):
-            parts.append('Yape disponible')
+            parts.append('🟣 Yape')
         if p.get('plin_number') or p.get('plin_holder'):
-            parts.append('Plin disponible')
+            parts.append('🔵 Plin')
         if p.get('card_brands') or p.get('card_provider'):
-            parts.append('Tarjeta')
+            parts.append('💳 Tarjeta')
         if p.get('transfer_accounts'):
-            parts.append('Transferencia bancaria')
+            parts.append('🏦 Transferencia bancaria')
         if p.get('cash_on_delivery_yes'):
-            parts.append('Contraentrega')
+            parts.append('🚚 Contraentrega')
         if parts:
-            return 'Métodos de pago: ' + ', '.join(parts)
+            return 'Aceptamos: ' + ', '.join(parts) + '. ¿Cuál prefieres?'
         return 'Por el momento no contamos con métodos de pago publicados.'
 
     # Envíos / cobertura / tiempos
