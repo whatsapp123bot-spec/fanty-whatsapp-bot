@@ -952,7 +952,7 @@ def whatsapp_webhook(request, bot_uuid):
         nodes = (flow_cfg or {}).get('nodes') or {}
         enabled = (flow_cfg or {}).get('enabled', True)
 
-        # Saludo inicial (primer contacto) — no interfiere con flujos ni humano
+        # Marcar si es primer contacto (el envío se hará más abajo para evitar duplicados con triggers)
         try:
             is_first_contact = not MessageLog.objects.filter(
                 bot=bot,
@@ -961,34 +961,6 @@ def whatsapp_webhook(request, bot_uuid):
             ).exists()
         except Exception:
             is_first_contact = False
-        if is_first_contact and not user.human_requested and not user.flow_node and raw_text and ((flow_cfg or {}).get('ai') or (flow_cfg or {}).get('ai_config')):
-            ai_cfg_wc = _flatten_ai_cfg(flow_cfg)
-            brand_wc = (
-                (flow_cfg or {}).get('brand')
-                or ai_cfg_wc.get('trade_name')
-                or ai_cfg_wc.get('nombre_comercial')
-                or ai_cfg_wc.get('legal_name')
-                or bot.name
-            )
-            _assistant_name = (
-                ai_cfg_wc.get('assistant_name')
-                or ai_cfg_wc.get('assistant')
-                or ai_cfg_wc.get('assistantName')
-                or ai_cfg_wc.get('nombre_asistente')
-                or ai_cfg_wc.get('name')
-                or 'Asistente'
-            )
-            assistant_name = (_assistant_name or '').strip()
-            welcome_message = (
-                ai_cfg_wc.get('welcome_message')
-                or ai_cfg_wc.get('welcome')
-                or ai_cfg_wc.get('greeting')
-                or f"Hola, soy {assistant_name}, tu asistente de ventas. ¿Qué te gustaría ver hoy?"
-            ).strip()
-            try:
-                send_whatsapp_text(bot, wa_from, welcome_message)
-            except Exception:
-                pass
 
         # Comando: Cerrar flujo (si hay flujo activo)
         def _norm_close(s: str) -> bool:
@@ -1063,6 +1035,40 @@ def whatsapp_webhook(request, bot_uuid):
                 if chosen:
                     send_flow_node(chosen)
                     return JsonResponse({'status': 'ok'})
+
+            # Saludo inicial moved: solo si es primer contacto, no hubo trigger y el usuario saludó
+            def _looks_like_greeting(s: str) -> bool:
+                t = (s or '').lower().strip()
+                t = t.replace('¡','').replace('!','').replace('.','').replace(',','')
+                return t in ('hola','buenas','buenos dias','buenas tardes','buenas noches','hola buen dia','hola buenos dias')
+
+            if is_first_contact and not user.human_requested and not user.flow_node and raw_text and _looks_like_greeting(raw_text) and (((flow_cfg or {}).get('ai') or (flow_cfg or {}).get('ai_config'))):
+                ai_cfg_wc = _flatten_ai_cfg(flow_cfg)
+                _assistant_name = (
+                    ai_cfg_wc.get('assistant_name')
+                    or ai_cfg_wc.get('assistant')
+                    or ai_cfg_wc.get('assistantName')
+                    or ai_cfg_wc.get('nombre_asistente')
+                    or ai_cfg_wc.get('name')
+                    or 'Asistente'
+                )
+                assistant_name = (_assistant_name or '').strip()
+                welcome_message = (
+                    ai_cfg_wc.get('welcome_message')
+                    or ai_cfg_wc.get('welcome')
+                    or ai_cfg_wc.get('greeting')
+                    or f"Hola, soy {assistant_name}, tu asistente de ventas. ¿Qué te gustaría ver hoy?"
+                )
+                # Evitar placeholders antiguos tipo "[Nombre del negocio]"
+                wlow = (welcome_message or '').lower()
+                if ('[' in welcome_message and ']' in welcome_message and 'nombre del negocio' in wlow):
+                    welcome_message = f"Hola, soy {assistant_name}, tu asistente de ventas. ¿Qué te gustaría ver hoy?"
+                welcome_message = welcome_message.strip()
+                try:
+                    send_whatsapp_text(bot, wa_from, welcome_message)
+                except Exception:
+                    pass
+                return JsonResponse({'status': 'ok'})
 
             # Respuesta IA general sólo si NO humano y NO flujo activo
             if not user.human_requested:
