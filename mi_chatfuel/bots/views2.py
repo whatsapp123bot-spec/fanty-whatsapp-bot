@@ -12,6 +12,7 @@ from django.http import (
 from django.views.decorators.csrf import csrf_exempt
 from django.shortcuts import get_object_or_404, render
 from django.urls import reverse, NoReverseMatch
+from django.db.models import Q
 from django.contrib.auth.decorators import login_required
 from django.utils import timezone
 import requests
@@ -114,9 +115,9 @@ def api_get_conversation(request, wa_id: str):
         return JsonResponse({'error': 'No encontrado'}, status=404)
     limit = int(request.GET.get('limit', '200'))
     msgs = MessageLog.objects.filter(
-        bot=u.bot,
-        wa_from__in=[wa_id, u.bot.phone_number_id],
-        wa_to__in=[wa_id, u.bot.phone_number_id]
+        bot=u.bot
+    ).filter(
+        Q(wa_from=wa_id) | Q(wa_to=wa_id) | Q(wa_from=u.bot.phone_number_id) | Q(wa_to=u.bot.phone_number_id)
     ).order_by('created_at')[:limit]
     out = []
     for m in msgs:
@@ -438,11 +439,14 @@ def whatsapp_webhook(request, bot_uuid):
         name = (profile or {}).get('name', '')
 
         # Log in
+        # Guardar usando phone_number_id (consistente con envíos) para poder cruzar luego
+        meta = value.get('metadata', {}) if isinstance(value, dict) else {}
+        wa_to_number = meta.get('phone_number_id') or bot.phone_number_id
         MessageLog.objects.create(
             bot=bot,
             direction=MessageLog.IN,
             wa_from=wa_from,
-            wa_to=value.get('metadata', {}).get('display_phone_number', ''),
+            wa_to=wa_to_number,
             message_type=message_type,
             payload=body,
             status='received',
