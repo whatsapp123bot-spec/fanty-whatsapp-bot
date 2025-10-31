@@ -39,19 +39,19 @@
   /* Bot (out) a la derecha; Cliente (in) a la izquierda */
   .msg-wrap.in{align-self:flex-start}
   .msg-wrap.out{align-self:flex-end}
-  .msg{padding:8px 12px;border-radius:10px;font-size:14px}
+  .msg{padding:8px 12px;border-radius:10px;font-size:14px;position:relative}
   /* Cliente: gris a la izquierda */
-  .msg.in{background:#f3f4f6;border:1px solid rgba(0,0,0,.06);color:#111827;box-shadow:0 4px 10px rgba(15,23,42,.08)}
+  .msg.in{background:#f3f4f6;border:1px solid rgba(0,0,0,.06);color:#111827;box-shadow:0 4px 10px rgba(15,23,42,.08);padding-left:36px}
   /* Bot: verde a la derecha (tono suave) */
-  .msg.out{background:#d1fae5;border:1px solid rgba(34,197,94,.35);color:#111827;box-shadow:0 4px 10px rgba(34,197,94,.12)}
+  .msg.out{background:#d1fae5;border:1px solid rgba(34,197,94,.35);color:#111827;box-shadow:0 4px 10px rgba(34,197,94,.12);padding-right:36px}
   /* Píldoras de opciones bajo mensajes del bot */
   .options{display:flex;flex-direction:column;gap:6px;margin-top:6px}
   .option-pill{display:block;width:100%;text-align:left;padding:10px 12px;border-radius:10px;background:#d1fae5;color:#111827;border:1px solid rgba(34,197,94,.35);box-shadow:0 2px 8px rgba(34,197,94,.12);font-weight:400;font-size:14px}
   .option-pill:hover{filter:brightness(0.98)}
-  /* Hora de los mensajes */
-  .time{font-size:12px;color:#64748b;margin-top:4px}
-  .msg-wrap.in .time{text-align:left}
-  .msg-wrap.out .time{text-align:right}
+  /* Hora dentro de la burbuja */
+  .bubble-time{position:absolute;bottom:6px;font-size:11px;color:#64748b}
+  .msg.in .bubble-time{left:10px}
+  .msg.out .bubble-time{right:10px}
   /* Deshabilitado */
   .composer input:disabled{opacity:.6;cursor:not-allowed}
   .composer .btn:disabled{opacity:.6;cursor:not-allowed}
@@ -113,7 +113,29 @@
     function getCookie(name){
       const v = `; ${document.cookie}`; const p = v.split(`; ${name}=`); if (p.length===2) return p.pop().split(';').shift();
     }
-    function formatTime(iso){ try { const d = new Date(iso); return d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}); } catch(e){ return ''; } }
+    function formatTime(iso){
+      // Hora HH:mm para dentro de la burbuja
+      try { const d = new Date(iso); return d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}); } catch(e){ return ''; }
+    }
+    function formatListTime(iso){
+      // En la lista: hoy HH:mm; ayer "ayer"; dentro de 7 días nombre del día; más de 7 días, solo fecha
+      if (!iso) return '';
+      try {
+        const d = new Date(iso);
+        const now = new Date();
+        const startOfDay = x => { const y = new Date(x); y.setHours(0,0,0,0); return y; };
+        const dn = startOfDay(now).getTime();
+        const dd = startOfDay(d).getTime();
+        const daysDiff = Math.round((dn - dd) / (1000*60*60*24));
+        if (daysDiff === 0) return d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+        if (daysDiff === 1) return 'ayer';
+        if (daysDiff < 7) {
+          const days = ['domingo','lunes','martes','miércoles','jueves','viernes','sábado'];
+          return days[d.getDay()];
+        }
+        return d.toLocaleDateString();
+      } catch(e){ return ''; }
+    }
     function updateComposerEnabled(){
       const tx = document.getElementById('text'); const btn = document.getElementById('sendBtn');
       const enabled = !!(current && current.human_requested);
@@ -133,8 +155,9 @@
         const div = document.createElement('div'); div.className='item'; div.onclick=()=>openConv(i);
         if (current && current.wa_id===i.wa_id) div.classList.add('selected');
         const unread = (typeof i.unread!=='undefined'?i.unread:(typeof i.unread_count!=='undefined'?i.unread_count:(typeof i.unreadCount!=='undefined'?i.unreadCount:0)))||0;
+  const t = i.last_message_at ? formatListTime(i.last_message_at) : '';
         const left = `<div class="left"><div class="name">${i.name||i.wa_id}</div><div class="meta">${i.wa_id} • ${i.bot_name}${i.human_requested?' • 🟢':''}</div></div>`;
-        const right = `<div class="right">${unread>0?`<span class="badge-unread">${unread>99?'99+':unread}</span>`:''}</div>`;
+        const right = `<div class="right"><span class="meta">${t}</span>${unread>0?`<span class="badge-unread">${unread>99?'99+':unread}</span>`:''}</div>`;
         div.innerHTML = left + right;
         host.appendChild(div);
       })
@@ -151,8 +174,8 @@
         const wrap = document.createElement('div'); wrap.className = 'msg-wrap ' + (m.direction==='in'?'in':'out');
         const dv = document.createElement('div'); dv.className = 'msg ' + (m.direction==='in'?'in':'out');
         dv.textContent = (m.body && String(m.body).trim()) || `[${m.type}]`;
+        const tm = document.createElement('span'); tm.className='bubble-time'; tm.textContent = formatTime(m.created_at); dv.appendChild(tm);
         wrap.appendChild(dv);
-        const tm = document.createElement('div'); tm.className = 'time'; tm.textContent = formatTime(m.created_at); wrap.appendChild(tm);
         // Si el mensaje saliente tenía botones, muéstralos como pills debajo
         if (m.direction==='out' && Array.isArray(m.options) && m.options.length){
           const pills = document.createElement('div'); pills.className='options';
