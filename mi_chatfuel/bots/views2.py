@@ -577,6 +577,7 @@ def whatsapp_webhook(request, bot_uuid):
             send_whatsapp_interactive_buttons,
             send_whatsapp_image,
             send_whatsapp_document,
+            answer_from_persona,
             ai_select_trigger,
             ai_answer,
         )
@@ -869,6 +870,14 @@ def whatsapp_webhook(request, bot_uuid):
                     'boleta_yes': ai_cfg.get('boleta_yes') or '',
                     'factura_yes': ai_cfg.get('factura_yes') or '',
                 }
+                # Primero: intento determinista basado en el Cerebro (sin IA generativa)
+                quick = answer_from_persona(raw_text, persona)
+                if quick:
+                    try:
+                        send_whatsapp_text(bot, wa_from, quick)
+                    except Exception:
+                        pass
+                    return JsonResponse({'status': 'ok'})
                 # Permitir override de marca en flujo si existe, priorizando el nombre comercial del cerebro
                 brand = (
                     (flow_cfg or {}).get('brand')

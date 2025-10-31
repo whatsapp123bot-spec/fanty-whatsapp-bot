@@ -1,6 +1,7 @@
 import requests
 from django.conf import settings
 from .models import MessageLog, AIKey
+import unicodedata
 
 
 # ======= OpenRouter AI helpers =======
@@ -39,6 +40,221 @@ def ai_chat(messages: list[dict], model: str | None = None, temperature: float =
         return resp.json()
     except Exception:
         return None
+
+
+# ======= Deterministic knowledge extraction from persona =======
+
+def _norm_text(s: str) -> str:
+    s = (s or '').lower().strip()
+    # strip accents
+    s = ''.join(c for c in unicodedata.normalize('NFD', s) if unicodedata.category(c) != 'Mn')
+    return s
+
+
+def answer_from_persona(user_text: str, persona: dict | None) -> str | None:
+    """Devuelve una respuesta directa usando los campos del 'Cerebro' sin IA generativa.
+    Cubre consultas típicas: quién eres, teléfonos, redes, web, horarios, dirección/mapa,
+    Yape/Plin, pagos, envíos, mayorista, RUC, boleta/factura, etc.
+    """
+    if not persona:
+        return None
+    t = _norm_text(user_text)
+    p = {k: (persona.get(k) or '').strip() for k in persona.keys()}
+
+    # Nombres negocio
+    biz = (p.get('trade_name') or p.get('legal_name') or '').strip()
+    asist = (p.get('name') or 'Asistente').strip()
+
+    # Saludo/Identidad
+    if any(kw in t for kw in ['quien eres', 'quien sos', 'quien me habla', 'tu nombre', 'como te llamas', 'quien es este']):
+        if biz:
+            return f"Soy {asist}, asistente virtual de {biz}."
+        return f"Soy {asist}, tu asistente virtual."
+
+    # Teléfono / WhatsApp
+    if any(kw in t for kw in ['telefono', 'celular', 'numero', 'whatsapp', 'contacto']):
+        if p.get('phone'):
+            extra = f" | Link WhatsApp: {p.get('whatsapp_link')}" if p.get('whatsapp_link') else ''
+            return f"Teléfono: {p.get('phone')}{extra}"
+        if p.get('whatsapp_link'):
+            return f"WhatsApp: {p.get('whatsapp_link')}"
+        return 'Por el momento no contamos con un teléfono publicado.'
+
+    # Sitio web / tienda / catálogo
+    if any(kw in t for kw in ['web', 'sitio', 'pagina', 'pagina web', 'tienda', 'catalogo', 'catálogo', 'link']):
+        links = []
+        if p.get('website'):
+            links.append(f"Web: {p.get('website')}")
+        if p.get('catalog_url'):
+            links.append(f"Catálogo: {p.get('catalog_url')}")
+        if links:
+            return ' | '.join(links)
+        return 'Por el momento no contamos con enlaces de web o catálogo.'
+
+    # Redes sociales
+    if any(kw in t for kw in ['redes', 'red social', 'instagram', 'facebook', 'tiktok', 'youtube', 'twitter', 'x', 'linktree']):
+        redes = []
+        if p.get('instagram'):
+            redes.append(f"Instagram: {p.get('instagram')}")
+        if p.get('facebook'):
+            redes.append(f"Facebook: {p.get('facebook')}")
+        if p.get('tiktok'):
+            redes.append(f"TikTok: {p.get('tiktok')}")
+        if p.get('youtube'):
+            redes.append(f"YouTube: {p.get('youtube')}")
+        if p.get('x'):
+            redes.append(f"X: {p.get('x')}")
+        if p.get('linktree'):
+            redes.append(f"Linktree: {p.get('linktree')}")
+        if redes:
+            return ' | '.join(redes)
+        return 'Por el momento no contamos con redes publicadas.'
+
+    # Horarios
+    if any(kw in t for kw in ['horario', 'horarios', 'abren', 'cierran']):
+        hs = []
+        if p.get('hours_mon_fri'):
+            hs.append(f"L-V: {p.get('hours_mon_fri')}")
+        if p.get('hours_sat'):
+            hs.append(f"Sábado: {p.get('hours_sat')}")
+        if p.get('hours_sun'):
+            hs.append(f"Domingos/Feriados: {p.get('hours_sun')}")
+        if hs:
+            return 'Horarios: ' + ' | '.join(hs)
+        return 'Por el momento no contamos con horarios publicados.'
+
+    # Dirección / mapa / ubicación
+    if any(kw in t for kw in ['direccion', 'dirección', 'ubicacion', 'ubicación', 'donde estan', 'mapa']):
+        addr_parts = [p.get('address'), p.get('city'), p.get('region'), p.get('country')]
+        addr = ', '.join([a for a in addr_parts if a])
+        extras = []
+        if p.get('maps_url'):
+            extras.append(f"Mapa: {p.get('maps_url')}")
+        if p.get('pickup_address') and p.get('pickup_address') != p.get('address'):
+            extras.append(f"Retiro: {p.get('pickup_address')}")
+        if addr or extras:
+            return ' | '.join([x for x in [f"Dirección: {addr}" if addr else ''] + extras if x])
+        return 'Por el momento no contamos con dirección publicada.'
+
+    # Pagos generales / Yape / Plin / Tarjeta / Transferencia / Contraentrega
+    if any(kw in t for kw in ['pago', 'pagos', 'metodos de pago', 'métodos de pago', 'yape', 'plin', 'tarjeta', 'transferencia', 'contraentrega']):
+        # Pregunta específica por Yape
+        if 'yape' in t:
+            if p.get('yape_number') or p.get('yape_holder'):
+                line = f"Yape: {p.get('yape_number') or ''}"
+                if p.get('yape_holder'):
+                    line += f" — Titular: {p.get('yape_holder')}"
+                if p.get('yape_alias'):
+                    line += f" — Alias: {p.get('yape_alias')}"
+                if p.get('yape_qr'):
+                    line += f" — QR: {p.get('yape_qr')}"
+                return line.strip()
+            return 'Por el momento no contamos con Yape.'
+        # Pregunta específica por Plin
+        if 'plin' in t:
+            if p.get('plin_number') or p.get('plin_holder'):
+                line = f"Plin: {p.get('plin_number') or ''}"
+                if p.get('plin_holder'):
+                    line += f" — Titular: {p.get('plin_holder')}"
+                if p.get('plin_qr'):
+                    line += f" — QR: {p.get('plin_qr')}"
+                return line.strip()
+            return 'Por el momento no contamos con Plin.'
+        # Tarjeta
+        if 'tarjeta' in t:
+            if p.get('card_brands') or p.get('card_provider') or p.get('card_paylink'):
+                item = f"Tarjeta: {p.get('card_brands') or ''}"
+                if p.get('card_provider'):
+                    item += f" — Proveedor: {p.get('card_provider')}"
+                if p.get('card_paylink'):
+                    item += f" — Link de pago: {p.get('card_paylink')}"
+                return item.strip()
+            return 'Por el momento no contamos con pago con tarjeta.'
+        # Transferencia
+        if 'transfer' in t or 'transferencia' in t:
+            if p.get('transfer_accounts') or p.get('transfer_instructions'):
+                msg = []
+                if p.get('transfer_accounts'):
+                    msg.append('Cuentas: ' + p.get('transfer_accounts'))
+                if p.get('transfer_instructions'):
+                    msg.append('Instrucciones: ' + p.get('transfer_instructions'))
+                return ' | '.join(msg)
+            return 'Por el momento no contamos con información de transferencia.'
+        # Contraentrega
+        if 'contra' in t or 'entrega' in t:
+            if p.get('cash_on_delivery_yes'):
+                return f"Contraentrega: {p.get('cash_on_delivery_yes')}"
+            return 'Por el momento no contamos con contraentrega.'
+        # Resumen pagos
+        parts = []
+        if p.get('yape_number') or p.get('yape_holder'):
+            parts.append('Yape disponible')
+        if p.get('plin_number') or p.get('plin_holder'):
+            parts.append('Plin disponible')
+        if p.get('card_brands') or p.get('card_provider'):
+            parts.append('Tarjeta')
+        if p.get('transfer_accounts'):
+            parts.append('Transferencia bancaria')
+        if p.get('cash_on_delivery_yes'):
+            parts.append('Contraentrega')
+        if parts:
+            return 'Métodos de pago: ' + ', '.join(parts)
+        return 'Por el momento no contamos con métodos de pago publicados.'
+
+    # Envíos / cobertura / tiempos
+    if any(kw in t for kw in ['envio', 'envío', 'envios', 'delivery', 'reparto', 'cobertura', 'distritos']):
+        msgs = []
+        if p.get('districts_costs'):
+            msgs.append('Distritos y costos:
+' + p.get('districts_costs'))
+        if p.get('typical_delivery_time'):
+            msgs.append(f"Tiempo típico: {p.get('typical_delivery_time')}")
+        if p.get('free_shipping_from'):
+            msgs.append(f"Envío gratis desde: {p.get('free_shipping_from')}")
+        if p.get('delivery_partners'):
+            msgs.append(f"Socios: {p.get('delivery_partners')}")
+        if msgs:
+            return ' | '.join(msgs)
+        return 'Por el momento no contamos con información de envíos.'
+
+    # Mayorista
+    if any(kw in t for kw in ['mayorista', 'mayoreo', 'al por mayor', 'lista mayorista', 'precio mayorista']):
+        parts = []
+        if p.get('wholesale_price_list_url'):
+            parts.append(f"Lista mayorista: {p.get('wholesale_price_list_url')}")
+        if p.get('wholesale_min_qty'):
+            parts.append(f"Mínimo: {p.get('wholesale_min_qty')}")
+        if p.get('wholesale_requires_ruc'):
+            parts.append(f"Requiere RUC: {p.get('wholesale_requires_ruc')}")
+        if parts:
+            return ' | '.join(parts)
+        return 'Por el momento no contamos con información mayorista.'
+
+    # RUC / Razón social / Nombre comercial
+    if any(kw in t for kw in ['ruc', 'razon social', 'razón social', 'nombre comercial']):
+        parts = []
+        if p.get('legal_name'):
+            parts.append(f"Razón social: {p.get('legal_name')}")
+        if p.get('trade_name'):
+            parts.append(f"Nombre comercial: {p.get('trade_name')}")
+        if p.get('ruc'):
+            parts.append(f"RUC: {p.get('ruc')}")
+        if parts:
+            return ' | '.join(parts)
+        return 'Por el momento no contamos con datos de RUC.'
+
+    # Boleta / factura
+    if any(kw in t for kw in ['boleta', 'factura', 'comprobante']):
+        parts = []
+        if p.get('boleta_yes'):
+            parts.append(f"Boleta: {p.get('boleta_yes')}")
+        if p.get('factura_yes'):
+            parts.append(f"Factura: {p.get('factura_yes')}")
+        if parts:
+            return ' | '.join(parts)
+        return 'Por el momento no contamos con información de comprobantes.'
+
+    return None
 
 
 def ai_select_trigger(user_text: str, candidates: list[dict]) -> str | None:
@@ -251,6 +467,7 @@ def ai_answer(
         (f"Eres el asistente virtual de {business_name}." if business_name else ""),
         f"Responde SIEMPRE en {language}.",
         "No digas que eres un modelo de lenguaje o una IA; preséntate como un asistente del negocio.",
+        "No te presentes ni saludes a menos que te pregunten explícitamente quién eres.",
         "Usa el nombre del negocio indicado (y sólo ese); no menciones otras marcas o plataformas.",
         "Usa la base de conocimiento provista; si falta información, pide un dato concreto y sugiere alternativas.",
         "Responde en 1-3 frases. Enlaza pasos claros cuando sea útil.",
