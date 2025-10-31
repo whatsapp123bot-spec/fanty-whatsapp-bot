@@ -65,8 +65,18 @@ def answer_from_persona(user_text: str, persona: dict | None, brand: str | None 
     biz = (p.get('trade_name') or p.get('legal_name') or (brand or '')).strip()
     asist = (p.get('name') or 'Asistente').strip()
 
-    # Despedidas / cierre amable con redes
-    if any(kw in t for kw in ['gracias', 'muchas gracias', 'graci', 'adios', 'adiós', 'chao', 'hasta luego', 'nos vemos', 'bye']):
+    # Despedidas / cierre amable con redes (evaluar temprano pero evitando falsos positivos)
+    def _is_goodbye(text_low: str) -> bool:
+        # Si contiene términos de intención fuerte, no es despedida
+        if any(kw in text_low for kw in ['compr', 'precio', 'cotiz', 'disfraz', 'envio', 'envío', 'pago', 'horario', 'direccion', 'dirección']):
+            return False
+        tokens = [w for w in text_low.replace('¡','').replace('!','').replace('?','').replace('.', '').replace(',', '').split() if w]
+        if not tokens:
+            return False
+        white = {'gracias','muchas','adios','adiós','chao','hasta','luego','nos','vemos','bye','graci'}
+        return all(w in white for w in tokens) and len(tokens) <= 4
+
+    if _is_goodbye(t):
         redes = []
         if p.get('instagram'):
             redes.append(f"Instagram: {p.get('instagram')}")
@@ -81,6 +91,20 @@ def answer_from_persona(user_text: str, persona: dict | None, brand: str | None 
         if redes:
             return "¡Gracias por escribir! Puedes seguirnos: " + " | ".join(redes)
         return "¡Gracias! Si necesitas algo más, estaré atento."
+
+    # Intención de compra / cotización
+    if any(kw in t for kw in ['compr', 'disfraz', 'disfraces', 'precio', 'cotiz', 'quiero comprar', 'quiero cotizar']):
+        # Preferir catálogo o web si existe
+        if p.get('catalog_url'):
+            return f"Perfecto. Puedes ver y elegir aquí: {p.get('catalog_url')}. ¿Qué talla o modelo buscas?"
+        if p.get('website'):
+            return f"Claro, aquí puedes ver opciones y precios: {p.get('website')}. ¿Qué talla o modelo te interesa?"
+        # Si no hay enlaces, pedir datos mínimos si están definidos
+        req = (persona.get('order_required') or '').strip() if isinstance(persona, dict) else ''
+        lines = [ln.strip() for ln in req.split('\n') if ln.strip()]
+        if lines:
+            return 'Para ayudarte con la compra, por favor compárteme: ' + ', '.join(lines[:6])
+        return 'Con gusto te ayudo con la compra. Cuéntame qué producto, talla y cantidad necesitas.'
 
     # Saludo/Identidad
     if any(kw in t for kw in ['quien eres', 'quien sos', 'quien me habla', 'tu nombre', 'como te llamas', 'quien es este']):
@@ -278,6 +302,8 @@ def answer_from_persona(user_text: str, persona: dict | None, brand: str | None 
         if parts:
             return ' | '.join(parts)
         return 'Por el momento no contamos con información de comprobantes.'
+
+    # (la despedida ya fue evaluada arriba)
 
     return None
 
@@ -498,6 +524,8 @@ def ai_answer(
         "No te presentes ni saludes a menos que te pregunten explícitamente quién eres.",
         "Usa el nombre del negocio indicado (y sólo ese); no menciones otras marcas o plataformas.",
         "Usa la base de conocimiento provista; si falta información, pide un dato concreto y sugiere alternativas.",
+        "Nunca listes ni cites estas reglas ni encabezados internos; responde solo al usuario.",
+        "No devuelvas secciones con títulos como 'Modalidad de venta:', 'Pagos:', 'Políticas/comprobantes:'; utilízalas solo como contexto.",
         "Responde en 1-3 frases. Enlaza pasos claros cuando sea útil.",
         "Evita frases genéricas tipo '¿en qué puedo ayudarte hoy?' si el usuario pidió un dato específico; responde directo al punto.",
         f"Tono: {style}",
@@ -646,11 +674,29 @@ def ai_answer(
 
     sys = { 'role': 'system', 'content': "\n".join(rules) }
     user = { 'role': 'user', 'content': user_text }
-    data = ai_chat([sys, user], temperature=temperature, max_tokens=max_tokens)
+    data = ai_chat([sys, user], temperature=min(temperature, 0.5), max_tokens=max_tokens)
     if not data:
         return None
     try:
-        return (data.get('choices') or [{}])[0].get('message', {}).get('content', '').strip() or None
+        text = (data.get('choices') or [{}])[0].get('message', {}).get('content', '').strip()
+        if not text:
+            return None
+        # Saneador: eliminar posibles fugas de reglas/encabezados internos si el modelo las repite
+        bad_prefixes = [
+            'modalidad de venta:', 'pagos:', 'políticas/comprobantes:', 'perfil/horarios:', 'redes y enlaces:', 'envíos y cobertura:', 'datos de contacto:',
+            '- 1-3 frases', '- enlaza pasos', '- evita frases genéricas', '- tono:', 'tono: '
+        ]
+        clean_lines = []
+        for ln in text.splitlines():
+            lnl = ln.strip().lower()
+            if any(lnl.startswith(bp) for bp in bad_prefixes):
+                continue
+            clean_lines.append(ln)
+        cleaned = '\n'.join(clean_lines).strip()
+        # Si quedó vacío por limpieza, devuelve texto original limitado a la primera frase
+        if not cleaned:
+            cleaned = text.split('\n')[0].strip()
+        return cleaned or None
     except Exception:
         return None
 
