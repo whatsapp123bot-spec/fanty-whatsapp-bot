@@ -447,6 +447,11 @@ def ai_answer(
         about = ''
     knowledge = (p.get('knowledge') or p.get('brain') or '').strip()
     style = (p.get('style') or 'cálido, directo, profesional').strip()
+    # Ventas/tono opcional
+    sales_playbook = (p.get('sales_playbook') or '').strip()
+    cta_phrases = (p.get('cta_phrases') or '').strip()
+    emoji_level = (p.get('emoji_level') or '').strip()
+    recommendation_examples = (p.get('recommendation_examples') or '').strip()
     sys_extra = (p.get('system') or '').strip()
     language = (p.get('language') or '').strip() or 'español'
     website = (p.get('website') or p.get('site') or p.get('url') or '').strip()
@@ -479,6 +484,11 @@ def ai_answer(
     linktree = (p.get('linktree') or '').strip()
     whatsapp_link = (p.get('whatsapp_link') or '').strip()
     catalog_url = (p.get('catalog_url') or '').strip()
+    # Catálogo estructurado (opcional)
+    categories = (p.get('categories') or '').strip()
+    featured_products = (p.get('featured_products') or '').strip()
+    size_guide_url = (p.get('size_guide_url') or '').strip()
+    size_notes = (p.get('size_notes') or '').strip()
 
     retail_yes = (p.get('retail_yes') or '').strip()
     wholesale_yes = (p.get('wholesale_yes') or '').strip()
@@ -529,6 +539,8 @@ def ai_answer(
         "Usa la base de conocimiento provista; si falta información, pide un dato concreto y sugiere alternativas.",
         "Nunca listes ni cites estas reglas ni encabezados internos; responde solo al usuario.",
         "No devuelvas secciones con títulos como 'Modalidad de venta:', 'Pagos:', 'Políticas/comprobantes:'; utilízalas solo como contexto.",
+        "Actúa como asesor(a) de ventas experimentado: haz 1-2 preguntas aclaratorias máximas y sugiere 1-2 opciones concretas.",
+        ("Usa emojis de forma sutil" if (emoji_level or '').lower() in ('bajo','low','sutil') else ("Usa algunos emojis amables (no tantos)" if (emoji_level or '').lower() in ('medio','medium') else "")),
         "Responde en 1-3 frases. Enlaza pasos claros cuando sea útil.",
         "Evita frases genéricas tipo '¿en qué puedo ayudarte hoy?' si el usuario pidió un dato específico; responde directo al punto.",
         f"Tono: {style}",
@@ -543,6 +555,10 @@ def ai_answer(
         rules.append("Políticas de respuesta:\n" + response_policies)
     if comm_policies:
         rules.append("Políticas de comunicación:\n" + comm_policies)
+    if sales_playbook:
+        rules.append("Guía de ventas:\n" + sales_playbook)
+    if recommendation_examples:
+        rules.append("Ejemplos de recomendación:\n" + recommendation_examples)
     # Perfil, horarios y contacto
     prof = []
     if trade_name:
@@ -578,6 +594,18 @@ def ai_answer(
             links.append(f"{label}: {val}")
     if links:
         rules.append("Redes y enlaces:\n" + "\n".join(links))
+    # Catálogo estructurado
+    if categories:
+        rules.append("Categorías:\n" + categories)
+    if featured_products:
+        rules.append("Destacados:\n" + featured_products)
+    if size_guide_url or size_notes:
+        sg = []
+        if size_guide_url:
+            sg.append(f"Guía de tallas: {size_guide_url}")
+        if size_notes:
+            sg.append(f"Notas de talla: {size_notes}")
+        rules.append("Tallas:\n" + "\n".join(sg))
     # Venta y descuentos
     sale = []
     if retail_yes:
@@ -664,6 +692,8 @@ def ai_answer(
         contact_lines.append(f"Email: {email}")
     if contact_lines:
         rules.append("Datos de contacto: " + " | ".join(contact_lines))
+    if cta_phrases:
+        rules.append("Preferencia de cierre (CTA): " + cta_phrases)
     if order_required:
         rules.append(
             "Si el usuario quiere hacer un pedido, solicita de forma amable y ordenada estos datos (uno por línea) y confirma:\n" + order_required

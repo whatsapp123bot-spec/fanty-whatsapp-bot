@@ -640,6 +640,16 @@ def whatsapp_webhook(request, bot_uuid):
                     return result
                 prof = (ai_conf.get('assistant_profile') or {}) if isinstance(ai_conf.get('assistant_profile'), dict) else {}
                 biz = (ai_conf.get('business_profile') or {}) if isinstance(ai_conf.get('business_profile'), dict) else {}
+                # Ventas inteligentes (opcional)
+                if prof:
+                    if prof.get('sales_playbook') and not result.get('sales_playbook'):
+                        result['sales_playbook'] = prof.get('sales_playbook')
+                    if isinstance(prof.get('cta_phrases'), list) and not result.get('cta_phrases'):
+                        result['cta_phrases'] = ", ".join([str(x).strip() for x in prof.get('cta_phrases') if str(x).strip()])
+                    if prof.get('emoji_level') and not result.get('emoji_level'):
+                        result['emoji_level'] = prof.get('emoji_level')
+                    if isinstance(prof.get('recommendation_examples'), list) and not result.get('recommendation_examples'):
+                        result['recommendation_examples'] = "\n".join([str(x).strip() for x in prof.get('recommendation_examples') if str(x).strip()])
                 # Policies (listas) → líneas
                 not_supported = ai_conf.get('not_supported') or []
                 if isinstance(not_supported, list) and not result.get('out_of_scope'):
@@ -706,6 +716,29 @@ def whatsapp_webhook(request, bot_uuid):
                         ]:
                             if socials.get(k_src) and not result.get(k_dst):
                                 result[k_dst] = socials.get(k_src)
+                    # Catálogo estructurado y guías
+                    if isinstance(biz.get('categories'), list) and not result.get('categories'):
+                        result['categories'] = ", ".join([str(x).strip() for x in biz.get('categories') if str(x).strip()])
+                    featured = biz.get('featured_products') or []
+                    if isinstance(featured, list) and not result.get('featured_products'):
+                        # Serializar como líneas "Nombre: URL"
+                        lines = []
+                        for fp in featured:
+                            if isinstance(fp, dict):
+                                nm = (fp.get('name') or '').strip()
+                                url = (fp.get('url') or '').strip()
+                                if nm or url:
+                                    lines.append(f"{nm}: {url}".strip(': '))
+                        if lines:
+                            result['featured_products'] = "\n".join(lines)
+                    if biz.get('size_guide_url') and not result.get('size_guide_url'):
+                        result['size_guide_url'] = biz.get('size_guide_url')
+                    if biz.get('size_notes') and not result.get('size_notes'):
+                        result['size_notes'] = biz.get('size_notes')
+                    if biz.get('materials') and not result.get('materials'):
+                        result['materials'] = biz.get('materials')
+                    if biz.get('care_instructions') and not result.get('care_instructions'):
+                        result['care_instructions'] = biz.get('care_instructions')
                     payments = biz.get('payments') or {}
                     if isinstance(payments, dict):
                         yp = payments.get('yape') or {}
@@ -1220,6 +1253,11 @@ def whatsapp_webhook(request, bot_uuid):
                     'knowledge': ai_cfg.get('knowledge') or ai_cfg.get('brain') or ai_cfg.get('kb') or '',
                     'style': ai_cfg.get('style') or '',
                     'system': ai_cfg.get('system') or ai_cfg.get('instructions') or '',
+                    # Ventas y tono
+                    'sales_playbook': ai_cfg.get('sales_playbook') or '',
+                    'cta_phrases': ai_cfg.get('cta_phrases') or '',
+                    'emoji_level': ai_cfg.get('emoji_level') or '',
+                    'recommendation_examples': ai_cfg.get('recommendation_examples') or '',
                     'language': ai_cfg.get('language') or ai_cfg.get('lang') or 'español',
                     # Aceptar también claves del Builder: website_url y phone_number
                     'website': ai_cfg.get('website') or ai_cfg.get('website_url') or ai_cfg.get('site') or ai_cfg.get('url') or '',
@@ -1252,6 +1290,11 @@ def whatsapp_webhook(request, bot_uuid):
                     'linktree': ai_cfg.get('linktree') or '',
                     'whatsapp_link': ai_cfg.get('whatsapp_link') or '',
                     'catalog_url': ai_cfg.get('catalog_url') or ai_cfg.get('site_shop') or '',
+                    # Catálogo estructurado
+                    'categories': ai_cfg.get('categories') or '',
+                    'featured_products': ai_cfg.get('featured_products') or '',
+                    'size_guide_url': ai_cfg.get('size_guide_url') or '',
+                    'size_notes': ai_cfg.get('size_notes') or '',
                     # Modalidad de venta
                     'retail_yes': ai_cfg.get('retail_yes') or '',
                     'wholesale_yes': ai_cfg.get('wholesale_yes') or '',
@@ -1289,8 +1332,22 @@ def whatsapp_webhook(request, bot_uuid):
                     'boleta_yes': ai_cfg.get('boleta_yes') or '',
                     'factura_yes': ai_cfg.get('factura_yes') or '',
                 }
-                # Primero: intento determinista basado en el Cerebro (sin IA generativa)
-                quick = answer_from_persona(raw_text, persona, brand=( (flow_cfg or {}).get('brand') or persona.get('trade_name') or persona.get('legal_name') or None ))
+                # Primero: IA generativa orientada a ventas (anclada al Cerebro)
+                brand = (
+                    (flow_cfg or {}).get('brand')
+                    or persona.get('trade_name')
+                    or persona.get('legal_name')
+                    or None
+                )
+                answer = ai_answer(raw_text, brand=brand, persona=persona)
+                if answer:
+                    try:
+                        send_whatsapp_text(bot, wa_from, answer)
+                    except Exception:
+                        pass
+                    return JsonResponse({'status': 'ok'})
+                # Segundo: intento determinista basado en el Cerebro
+                quick = answer_from_persona(raw_text, persona, brand=brand)
                 if quick:
                     try:
                         send_whatsapp_text(bot, wa_from, quick)
@@ -1325,13 +1382,7 @@ def whatsapp_webhook(request, bot_uuid):
                             except Exception:
                                 pass
                             return JsonResponse({'status': 'ok'})
-                # Permitir override de marca en flujo si existe, priorizando el nombre comercial del cerebro
-                brand = (
-                    (flow_cfg or {}).get('brand')
-                    or persona.get('trade_name')
-                    or persona.get('legal_name')
-                    or None
-                )
+                # Si aún no hubo respuesta, usar IA una vez más (por si se armó mejor con label)
                 answer = ai_answer(raw_text, brand=brand, persona=persona)
                 if not answer:
                     # Fallback amable sin inventar información
@@ -1362,6 +1413,10 @@ def whatsapp_webhook(request, bot_uuid):
                 'knowledge': ai_cfg.get('knowledge') or ai_cfg.get('brain') or ai_cfg.get('kb') or '',
                 'style': ai_cfg.get('style') or '',
                 'system': ai_cfg.get('system') or ai_cfg.get('instructions') or '',
+                'sales_playbook': ai_cfg.get('sales_playbook') or '',
+                'cta_phrases': ai_cfg.get('cta_phrases') or '',
+                'emoji_level': ai_cfg.get('emoji_level') or '',
+                'recommendation_examples': ai_cfg.get('recommendation_examples') or '',
                 'language': ai_cfg.get('language') or ai_cfg.get('lang') or 'español',
                 'website': ai_cfg.get('website') or ai_cfg.get('website_url') or ai_cfg.get('site') or ai_cfg.get('url') or '',
                 'phone': ai_cfg.get('phone') or ai_cfg.get('phone_number') or ai_cfg.get('telefono') or '',
@@ -1393,6 +1448,10 @@ def whatsapp_webhook(request, bot_uuid):
                 'linktree': ai_cfg.get('linktree') or '',
                 'whatsapp_link': ai_cfg.get('whatsapp_link') or '',
                 'catalog_url': ai_cfg.get('catalog_url') or ai_cfg.get('site_shop') or '',
+                'categories': ai_cfg.get('categories') or '',
+                'featured_products': ai_cfg.get('featured_products') or '',
+                'size_guide_url': ai_cfg.get('size_guide_url') or '',
+                'size_notes': ai_cfg.get('size_notes') or '',
                 # Modalidad de venta
                 'retail_yes': ai_cfg.get('retail_yes') or '',
                 'wholesale_yes': ai_cfg.get('wholesale_yes') or '',
@@ -1431,16 +1490,7 @@ def whatsapp_webhook(request, bot_uuid):
                 'factura_yes': ai_cfg.get('factura_yes') or '',
             }
 
-            # Intento determinista
-            quick = answer_from_persona(raw_text, persona, brand=((flow_cfg or {}).get('brand') or persona.get('trade_name') or persona.get('legal_name') or None))
-            if quick:
-                try:
-                    send_whatsapp_text(bot, wa_from, quick)
-                except Exception:
-                    pass
-                return JsonResponse({'status': 'ok'})
-
-            # Segundo: uso IA generativa si hay clave disponible
+            # IA generativa primero
             brand = (
                 (flow_cfg or {}).get('brand')
                 or persona.get('trade_name')
@@ -1448,6 +1498,20 @@ def whatsapp_webhook(request, bot_uuid):
                 or None
             )
             answer = ai_answer(raw_text, brand=brand, persona=persona)
+            if answer:
+                try:
+                    send_whatsapp_text(bot, wa_from, answer)
+                except Exception:
+                    pass
+                return JsonResponse({'status': 'ok'})
+            # Segundo: intento determinista
+            quick = answer_from_persona(raw_text, persona, brand=brand)
+            if quick:
+                try:
+                    send_whatsapp_text(bot, wa_from, quick)
+                except Exception:
+                    pass
+                return JsonResponse({'status': 'ok'})
             if not answer:
                 name = persona.get('name') or 'Asistente'
                 order_lines = [ln.strip() for ln in (persona.get('order_required') or '').split('\n') if ln.strip()]

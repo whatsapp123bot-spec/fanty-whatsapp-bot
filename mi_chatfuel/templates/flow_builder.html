@@ -450,6 +450,27 @@ No prometer plazos sin fuente"></textarea>
           </div>
         </div>
 
+        <h4>Ventas inteligentes (opcional)</h4>
+        <div class="grid">
+          <div style="grid-column:1 / span 2">
+            <label>Guía de ventas (breve)</label>
+            <textarea id="ai_sales_playbook" placeholder="Cómo recomendar, qué preguntar primero, qué priorizar (ej. talla/estilo/color, presupuesto, ocasión)"></textarea>
+          </div>
+          <div>
+            <label>Frases de cierre (CTA, separadas por coma)</label>
+            <input id="ai_cta_phrases" type="text" placeholder="¿Te paso opciones?, ¿Te reservo?, ¿Quieres ayuda con la talla?" />
+          </div>
+          <div>
+            <label>Nivel de emojis</label>
+            <input id="ai_emoji_level" type="text" placeholder="Bajo / Medio" />
+          </div>
+          <div style="grid-column:1 / span 2">
+            <label>Ejemplos de recomendación (una por línea)</label>
+            <textarea id="ai_reco_examples" placeholder="Para alguien que busca algo elegante → sugiere set lace negro.
+Para regalo rápido → sugiere tarjetas de regalo."></textarea>
+          </div>
+        </div>
+
         <h4>Perfil del negocio</h4>
         <div class="grid">
           <div>
@@ -543,6 +564,30 @@ No prometer plazos sin fuente"></textarea>
           <div style="grid-column:1 / span 2">
             <label>Sitio web (catálogo/tienda)</label>
             <input id="soc_web" type="url" placeholder="https://tu-dominio.com/tienda" />
+          </div>
+        </div>
+
+        <h4>Catálogo estructurado (opcional)</h4>
+        <div class="grid">
+          <div style="grid-column:1 / span 2">
+            <label>Categorías (una por línea)</label>
+            <textarea id="biz_categories" placeholder="Bodies
+Conjuntos
+Juguetes
+Zapatos"></textarea>
+          </div>
+          <div style="grid-column:1 / span 2">
+            <label>Destacados (una por línea: Nombre; URL)</label>
+            <textarea id="biz_featured" placeholder="Body encaje negro; https://...
+Conjunto satín rojo; https://..."></textarea>
+          </div>
+          <div>
+            <label>Guía de tallas (URL)</label>
+            <input id="biz_size_guide" type="url" placeholder="https://.../tallas" />
+          </div>
+          <div style="grid-column:1 / span 2">
+            <label>Notas de talla (opcional)</label>
+            <input id="biz_size_notes" type="text" placeholder="Modelos tallan pequeño; si dudas, elige una talla más" />
           </div>
         </div>
 
@@ -1432,6 +1477,13 @@ Callao; S/ 15; 48-72h"></textarea>
         set('ai_required', Array.isArray(p.required_order_info)? p.required_order_info.join('\n') : '');
         set('ai_oos', Array.isArray(cfg.not_supported)? cfg.not_supported.join('\n') : '');
         set('ai_policies', Array.isArray(cfg.policies)? cfg.policies.join('\n') : '');
+        // Ventas inteligentes (assistant_profile)
+        set('ai_sales_playbook', p.sales_playbook||'');
+        const ctas = Array.isArray(p.cta_phrases)? p.cta_phrases.join(', ') : (p.cta_phrases||'');
+        set('ai_cta_phrases', ctas);
+        set('ai_emoji_level', p.emoji_level||'');
+        const reco = Array.isArray(p.recommendation_examples)? p.recommendation_examples.join('\n') : (p.recommendation_examples||'');
+        set('ai_reco_examples', reco);
         // Políticas de comunicación (checkboxes derivados de policies)
         try{
           const pol = Array.isArray(cfg.policies)? cfg.policies : [];
@@ -1467,6 +1519,12 @@ Callao; S/ 15; 48-72h"></textarea>
         set('soc_lt', s.linktree||'');
         set('soc_wa', s.whatsapp_link||'');
         set('soc_web', s.website||'');
+  // Catálogo estructurado
+  set('biz_categories', Array.isArray(b.categories)? b.categories.join('\n') : (b.categories||''));
+  const featTxt = Array.isArray(b.featured_products)? b.featured_products.map(fp => [fp.name||'', fp.url||''].join('; ')).join('\n') : '';
+  set('biz_featured', featTxt);
+  set('biz_size_guide', b.size_guide_url||'');
+  set('biz_size_notes', b.size_notes||'');
         const pay = b.payments||{};
         const yp = pay.yape||{}; set('pay_yape_phone', yp.phone||''); set('pay_yape_holder', yp.holder||''); set('pay_yape_alias', yp.alias||''); set('pay_yape_qr', yp.qr_url||'');
         const pl = pay.plin||{}; set('pay_plin_phone', pl.phone||''); set('pay_plin_holder', pl.holder||''); set('pay_plin_qr', pl.qr_url||'');
@@ -1512,7 +1570,12 @@ Callao; S/ 15; 48-72h"></textarea>
         website_url: document.getElementById('ai_site')?.value||'',
         phone_number: document.getElementById('ai_phone')?.value||'',
         store_description: document.getElementById('ai_store_desc')?.value||'',
-        email: document.getElementById('ai_email')?.value||''
+        email: document.getElementById('ai_email')?.value||'',
+        // Ventas inteligentes
+        sales_playbook: (document.getElementById('ai_sales_playbook')?.value||'').trim(),
+        cta_phrases: (document.getElementById('ai_cta_phrases')?.value||'').split(',').map(s=>s.trim()).filter(Boolean),
+        emoji_level: (document.getElementById('ai_emoji_level')?.value||'').trim(),
+        recommendation_examples: (document.getElementById('ai_reco_examples')?.value||'').split(/\r?\n/).map(s=>s.trim()).filter(Boolean)
       };
       flow.ai_config = flow.ai_config || {};
       flow.ai_config.assistant_profile = profile;
@@ -1566,6 +1629,11 @@ Callao; S/ 15; 48-72h"></textarea>
           whatsapp_link: val('soc_wa'),
           website: val('soc_web')
         },
+        // Catálogo estructurado
+        categories: (val('biz_categories')? val('biz_categories').split(/\r?\n/).map(s=>s.trim()).filter(Boolean) : []),
+        featured_products: (val('biz_featured')? val('biz_featured').split(/\r?\n/).map(line=>{ const p=line.split(';').map(s=>s.trim()); if(!p.filter(Boolean).length) return null; return { name: p[0]||'', url: p[1]||'' }; }).filter(Boolean) : []),
+        size_guide_url: val('biz_size_guide'),
+        size_notes: val('biz_size_notes'),
         payments: {
           yape: {
             phone: val('pay_yape_phone'),
